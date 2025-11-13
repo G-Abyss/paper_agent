@@ -1,0 +1,55 @@
+# keywords.yaml - 研究领域关键词配置
+
+high_priority:
+  # 遥操作相关
+  - "teleoperation"
+  - "遥操作"
+  - "remote manipulation"
+  - "remote operation"
+  - "telemanipulation"
+  
+  # 机器人动力学相关
+  - "robot dynamics"
+  - "robotic dynamics"
+  - "机器人动力学"
+  - "dynamic modeling"
+  - "dynamics model"
+  - "dynamic identification"
+  - "system identification"
+  - "parameter identification"
+  - "参数辨识"
+  - "系统辨识"
+  - "model identification"
+  
+  # 力控相关
+  - "force control"
+  - "力控"
+  - "力控制"
+  - "impedance control"
+  - "admittance control"
+  - "hybrid force"
+  - "force feedback"
+  - "force sensing"
+  - "compliance control"
+
+related:
+  # 相关领域
+  - "haptic"
+  - "haptics"
+  - "触觉"
+  - "tactile"
+  - "bilateral control"
+  - "双边控制"
+  - "master-slave"
+  - "contact force"
+  - "interaction force"
+  - "physical interaction"
+  - "human-robot interaction"
+  - "collaborative robot"
+  - "协作机器人"
+
+exclude:
+  # 排除不相关的领域
+  - "autonomous driving"
+  - "computer vision only"
+  - "pure navigation"
