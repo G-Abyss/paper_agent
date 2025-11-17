@@ -18,6 +18,7 @@ import time
 import ssl
 from crewai import Agent, Task, Crew, LLM
 import logging
+import pandas as pd
 
 # 禁用 CrewAI 遥测（可选）
 os.environ['CREWAI_TELEMETRY_OPT_OUT'] = 'true'
@@ -38,8 +39,18 @@ load_dotenv()
 QMAIL_USER = os.getenv('QMAIL_USER')
 QMAIL_PASSWORD = os.getenv('QMAIL_PASSWORD')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:32b')
-MAX_EMAILS = int(os.getenv('MAX_EMAILS', 20))
+# MAX_EMAILS = int(os.getenv('MAX_EMAILS', 20))
+MAX_EMAILS = 30
 OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+# 日期范围配置：从前START_DAYS天到前END_DAYS天
+# 例如：START_DAYS=3, END_DAYS=0 表示从前3天到今天
+#      START_DAYS=7, END_DAYS=3 表示从前7天到前3天
+START_DAYS = int(os.getenv('START_DAYS', 1))  # 默认从前1天开始
+END_DAYS = int(os.getenv('END_DAYS', 0))  # 默认到今天（前0天）
+# START_DAYS = 1  # 默认从前1天开始
+# END_DAYS = 0  # 默认到今天（前0天）
+# 备份路径配置（可选）：如果设置了此路径，报告会同时保存到该路径
+BACKUP_DIR = os.getenv('BACKUP_DIR', '')  # 默认为空，不进行备份
 
 # 设置环境变量（CrewAI 通过 LiteLLM 连接 Ollama 需要这些）
 os.environ['OLLAMA_API_BASE'] = OLLAMA_BASE_URL
@@ -95,28 +106,98 @@ def connect_gmail(max_retries=3, retry_delay=5):
                 print(f"等待 {retry_delay} 秒后重试...")
                 time.sleep(retry_delay)
             else:
-                print(f"✗ Gmail连接失败，已重试 {max_retries} 次")
+                print(f"✗ QQmail连接失败，已重试 {max_retries} 次")
                 raise Exception(f"无法连接到Gmail: {str(e)}")
     
     raise Exception("无法连接到Gmail")
 
 
-def fetch_scholar_emails(mail, days=1):
-    """获取Google学术推送邮件"""
-    print(f"\n正在获取最近{days}天的Google学术推送...")
+def parse_email_date(date_str):
+    """解析邮件日期字符串为datetime对象"""
+    try:
+        # 使用email.utils的标准方法解析邮件日期
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(date_str)
+    except (ValueError, TypeError, AttributeError):
+        # 如果标准方法失败，返回None
+        return None
+
+
+def is_email_in_date_range(msg, start_days=1, end_days=0):
+    """
+    检查邮件是否在指定的日期范围内
+    
+    Args:
+        msg: 邮件对象
+        start_days: 开始日期（前start_days天，例如start_days=3表示前3天）
+        end_days: 结束日期（前end_days天，例如end_days=0表示今天，end_days=1表示昨天）
+    
+    Returns:
+        bool: 如果邮件在日期范围内返回True，否则返回False
+    """
+    try:
+        # 获取邮件日期
+        date_str = msg.get('Date')
+        if not date_str:
+            return False
+        
+        email_date = parse_email_date(date_str)
+        if not email_date:
+            return False
+        
+        # 计算日期范围（前start_days天到前end_days天）
+        now = datetime.now()
+        # 结束日期：前end_days天（不包含下一天）
+        end_date = (now - timedelta(days=end_days)).date()
+        end_date_exclusive = end_date + timedelta(days=1)
+        # 开始日期：前start_days天
+        start_date = (now - timedelta(days=start_days)).date()
+        
+        # 只比较日期部分，忽略时间
+        email_date_only = email_date.date()
+        
+        return start_date <= email_date_only < end_date_exclusive
+    except Exception as e:
+        logging.warning(f"检查邮件日期时出错: {str(e)}")
+        return True  # 如果无法解析日期，默认包含该邮件
+
+
+def fetch_scholar_emails(mail, start_days=1, end_days=0):
+    """
+    获取Google学术推送邮件
+    
+    Args:
+        mail: IMAP邮件连接对象
+        start_days: 开始日期（前start_days天，例如start_days=3表示从前3天开始）
+        end_days: 结束日期（前end_days天，例如end_days=0表示到今天，end_days=1表示到昨天）
+    
+    Returns:
+        list: 邮件ID列表
+    """
+    now = datetime.now()
+    start_date_obj = now - timedelta(days=start_days)
+    end_date_obj = now - timedelta(days=end_days)
+    end_date_exclusive = end_date_obj + timedelta(days=1)
+    
+    start_date_str = start_date_obj.strftime("%d-%b-%Y")
+    end_date_str = end_date_exclusive.strftime("%d-%b-%Y")
+    
+    if start_days == end_days:
+        print(f"\n正在获取前{start_days}天的Google学术推送...")
+    else:
+        print(f"\n正在获取从前{start_days}天到前{end_days}天的Google学术推送...")
     
     # 选择收件箱
     mail.select("inbox")
     
-    # 计算日期
-    since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-    
-    # 搜索Google学术邮件，以转发邮件发件人为ligen4073187@gmail.com，且转发邮件中的原始发件人地址为scholaralerts-noreply@google.com
-    search_criteria = f'(FROM "ligen4073187@gmail.com" SINCE {since_date}) AND (HEADER FROM "scholaralerts-noreply@google.com")'
+    # 搜索Google学术邮件，使用SINCE和BEFORE限制日期范围
+    # search_criteria = f'(FROM "ligen4073187@gmail.com" SINCE {since_date}) AND (HEADER FROM "scholaralerts-noreply@google.com")'
+    search_criteria = f'(FROM "scholaralerts-noreply@google.com" SINCE {start_date_str} BEFORE {end_date_str})'
     status, messages = mail.search(None, search_criteria)
     
     email_ids = messages[0].split()
-    print(f"✓ 找到 {len(email_ids)} 封邮件")
+    date_range_str = f"{start_date_obj.strftime('%Y-%m-%d')} 到 {end_date_obj.strftime('%Y-%m-%d')}"
+    print(f"✓ 找到 {len(email_ids)} 封邮件（日期范围: {date_range_str}）")
     
     return email_ids
 
@@ -226,14 +307,16 @@ def create_review_task(paper, translated_content):
             f"**相关性分析**：（详细说明与遥操作/机器人动力学/力控/机器人控制的关系）\n\n"
             f"**技术价值**：（评估该论文的技术价值和潜在应用）\n\n"
             f"**值得关注的原因**：（为什么这篇论文重要，有哪些亮点）\n\n"
-            f"**评分详情**（仅输出一次，JSON格式，包含评分理由）：\n"
-            f'{{"创新性": 0.0-1.0, "技术深度": 0.0-1.0, "相关性": 0.0-1.0, "实用性": 0.0-1.0, "研究质量": 0.0-1.0, "总分": 0.0-5.0, "评分理由": "简要说明评分依据"}}\n\n'
-            f"重要：只输出一次评分详情，评分理由必须包含在JSON中，不要重复说明评分规则或多次输出评分。"
+            f"**评分详情**：\n"
+            f"```json\n"
+            f'{{"创新性": 0.0-1.0, "技术深度": 0.0-1.0, "相关性": 0.0-1.0, "实用性": 0.0-1.0, "研究质量": 0.0-1.0, "总分": 0.0-5.0, "评分理由": "简要说明评分依据"}}\n'
+            f"```\n\n"
+            f"重要：评分详情必须使用Markdown代码块格式（```json ... ```），只输出一次，评分理由必须包含在JSON中，不要重复说明评分规则或多次输出评分。"
         ),
         agent=create_reviewer_agent(),
         expected_output=(
             "评审报告包含：核心贡献、技术方法、相关性分析、技术价值、值得关注的原因，"
-            "以及一个JSON格式的评分详情（包含各维度分数、总分和评分理由，不要重复输出）。"
+            "以及一个Markdown代码块格式的JSON评分详情（包含各维度分数、总分和评分理由，不要重复输出）。"
         )
     )
 
@@ -391,13 +474,10 @@ def extract_score_from_review(review_text):
 
 
 def generate_daily_report(relevant_papers):
-    """生成原始日报（Markdown 格式，简洁版）"""
+    """生成原始日报（Markdown 格式，与理想格式一致）"""
+    import json
+    import re
     report = []
-    
-    # 标题
-    report.append(f"# 📚 机器人学术论文日报")
-    report.append(f"**日期：** {datetime.now().strftime('%Y年%m月%d日')}")
-    report.append("")
     
     # 按评分分类论文
     high_value_papers = [p for p in relevant_papers if p.get('is_high_value', False)]
@@ -407,77 +487,182 @@ def generate_daily_report(relevant_papers):
     high_value_papers.sort(key=lambda x: x.get('score', 0.0), reverse=True)
     other_papers.sort(key=lambda x: x.get('score', 0.0), reverse=True)
     
+    def has_score_details_in_review(review_content):
+        """检查review内容中是否已经包含JSON代码块格式的评分详情"""
+        if not review_content:
+            return False
+        # 检查是否包含```json代码块，并且代码块中包含"总分"字段
+        # 匹配```json开始到```结束之间的内容，包含"总分"
+        pattern = r'```json\s*.*?"总分".*?```'
+        return bool(re.search(pattern, review_content, re.DOTALL | re.IGNORECASE))
+    
     # 高价值论文（评分>4.0，需要进一步研究）
     if high_value_papers:
         report.append("## 🔥 高价值论文（评分>4.0，建议下载原文深入研究）")
-        report.append("")
         
         for i, paper in enumerate(high_value_papers, 1):
             report.append(f"### {i}. {paper['title']}")
             report.append("")
-            report.append(paper.get('review', paper.get('summary', '')))
-            report.append("")
             
-            # # 简洁的评分展示（合并评分详情和评分理由）
-            # score = paper.get('score', 0.0)
-            # score_details = paper.get('score_details', {})
+            # 添加评审内容
+            review_content = paper.get('review', paper.get('summary', '')).strip()
+            if review_content:
+                report.append(review_content)
+                report.append("")
             
-            # # 使用表格展示评分（更直观），评分理由合并到表格最后
-            # if score_details:
-            #     report.append("**评分详情：**")
-            #     report.append("")
-            #     report.append("| 维度 | 分数 |")
-            #     report.append("|------|------|")
-            #     for dim in ['创新性', '技术深度', '相关性', '实用性', '研究质量']:
-            #         if dim in score_details:
-            #             dim_score = score_details[dim]
-            #             # 用星星表示分数
-            #             stars = "⭐" * int(dim_score * 5)
-            #             report.append(f"| {dim} | {dim_score:.2f}/1.0 {stars} |")
-            #     report.append(f"| **总分** | **{score:.2f}/5.0** |")
-            #     # 将评分理由合并到表格最后
-            #     if '评分理由' in score_details and score_details['评分理由']:
-            #         report.append(f"| **评分理由** | {score_details['评分理由']} |")
-            #     report.append("")
+            # 检查review中是否已经包含评分详情，如果没有才添加
+            if not has_score_details_in_review(review_content):
+                score_details = paper.get('score_details', {})
+                if score_details:
+                    report.append("**评分详情**：")
+                    report.append("")
+                    report.append("```json")
+                    # 格式化JSON，确保美观
+                    json_str = json.dumps(score_details, ensure_ascii=False, indent=2)
+                    report.append(json_str)
+                    report.append("```")
+                    report.append("")
             
+            # 添加论文链接
             report.append(f"🔗 [论文链接]({paper['link']})")
             report.append("")
-            report.append("---")
-            report.append("")
+            
+            # 添加分隔符（最后一个论文后不添加）
+            if i < len(high_value_papers):
+                report.append("---")
+                report.append("")
     
     # 其他相关论文
     if other_papers:
         report.append("## 📖 相关论文")
-        report.append("")
         
         for i, paper in enumerate(other_papers, 1):
             report.append(f"### {i}. {paper['title']}")
             report.append("")
-            report.append(paper.get('review', paper.get('summary', '')))
-            report.append("")
-            report.append(f"**评分：** {paper.get('score', 0.0):.2f}/5.0")
+            
+            # 添加评审内容
+            review_content = paper.get('review', paper.get('summary', '')).strip()
+            if review_content:
+                report.append(review_content)
+                report.append("")
+            
+            # 检查review中是否已经包含评分详情，如果没有才添加
+            if not has_score_details_in_review(review_content):
+                # 添加评分
+                report.append(f"**评分：** {paper.get('score', 0.0):.2f}/5.0")
+                report.append("")
+                
+                # 添加评分详情（JSON格式）
+                score_details = paper.get('score_details', {})
+                if score_details:
+                    report.append("**评分详情**：")
+                    report.append("")
+                    report.append("```json")
+                    json_str = json.dumps(score_details, ensure_ascii=False, indent=2)
+                    report.append(json_str)
+                    report.append("```")
+                    report.append("")
+            
+            # 添加论文链接
             report.append(f"🔗 [论文链接]({paper['link']})")
             report.append("")
-            report.append("---")
-            report.append("")
+            
+            # 添加分隔符（最后一个论文后不添加）
+            if i < len(other_papers):
+                report.append("---")
+                report.append("")
     
-    # 统计信息（使用表格）
+    # 统计信息（使用表格，格式与理想文件一致）
     report.append("## 📊 统计信息")
     report.append("")
-    report.append("| 类别 | 数量 |")
-    report.append("|------|------|")
-    report.append(f"| 高价值论文（评分>4.0） | {len(high_value_papers)} 篇 |")
-    report.append(f"| 其他相关论文 | {len(other_papers)} 篇 |")
-    report.append(f"| **总计** | **{len(relevant_papers)} 篇** |")
+    report.append("| 类别            | 数量       |")
+    report.append("| ------------- | -------- |")
+    report.append(f"| 高价值论文（评分>4.0） | {len(high_value_papers)} 篇     |")
+    report.append(f"| 其他相关论文        | {len(other_papers)} 篇      |")
+    report.append(f"| **总计**        | **{len(relevant_papers)} 篇** |")
     
     if high_value_papers:
         avg_score = sum(p.get('score', 0.0) for p in high_value_papers) / len(high_value_papers)
-        report.append(f"| 高价值论文平均评分 | {avg_score:.2f}/5.0 |")
-    
-    report.append("")
+        report.append(f"| 高价值论文平均评分     | {avg_score:.2f}/5.0 |")
     
     return "\n".join(report)
 
+
+def export_high_value_papers_to_excel(relevant_papers, output_dir="reports"):
+    """
+    将高价值论文导出到Excel表格
+    
+    Args:
+        relevant_papers: 所有相关论文列表
+        output_dir: 输出目录
+    """
+    # 筛选高价值论文
+    high_value_papers = [p for p in relevant_papers if p.get('is_high_value', False)]
+    
+    if not high_value_papers:
+        print("\n没有高价值论文需要导出")
+        return
+    
+    # 按评分排序
+    high_value_papers.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+    
+    # 准备数据
+    excel_data = []
+    
+    for paper in high_value_papers:
+        score_details = paper.get('score_details', {})
+        
+        # 构建数据行
+        row = {
+            '论文标题': paper.get('title', ''),
+            '论文链接': paper.get('link', ''),
+            '总分': score_details.get('总分', 0.0),
+            '创新性': score_details.get('创新性', 0.0),
+            '技术深度': score_details.get('技术深度', 0.0),
+            '相关性': score_details.get('相关性', 0.0),
+            '实用性': score_details.get('实用性', 0.0),
+            '研究质量': score_details.get('研究质量', 0.0),
+            '评分理由': score_details.get('评分理由', ''),
+        }
+        
+        excel_data.append(row)
+    
+    # 创建DataFrame
+    df = pd.DataFrame(excel_data)
+    
+    # 生成Excel文件名
+    excel_filename = f"{output_dir}/高价值论文_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    
+    # 保存到Excel
+    try:
+        with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='高价值论文', index=False)
+            
+            # 获取工作表对象以调整列宽
+            worksheet = writer.sheets['高价值论文']
+            
+            # 调整列宽
+            worksheet.column_dimensions['A'].width = 60  # 论文标题
+            worksheet.column_dimensions['B'].width = 80  # 论文链接
+            worksheet.column_dimensions['C'].width = 10  # 总分
+            worksheet.column_dimensions['D'].width = 10  # 创新性
+            worksheet.column_dimensions['E'].width = 10  # 技术深度
+            worksheet.column_dimensions['F'].width = 10  # 相关性
+            worksheet.column_dimensions['G'].width = 10  # 实用性
+            worksheet.column_dimensions['H'].width = 10  # 研究质量
+            worksheet.column_dimensions['I'].width = 50  # 评分理由
+            
+            # 设置标题行样式（加粗）
+            from openpyxl.styles import Font
+            header_font = Font(bold=True)
+            for cell in worksheet[1]:
+                cell.font = header_font
+        
+        print(f"\n✓ 高价值论文已导出到Excel: {excel_filename}")
+        print(f"  - 共导出 {len(high_value_papers)} 篇高价值论文")
+    except Exception as e:
+        logging.error(f"导出Excel时出错: {str(e)}")
+        print(f"\n✗ 导出Excel失败: {str(e)}")
 
 
 
@@ -491,15 +676,15 @@ def main():
     # 1. 连接Gmail
     mail = connect_gmail()
     
-    # 2. 获取邮件
-    email_ids = fetch_scholar_emails(mail, days=1)
+    # 2. 获取邮件（从前START_DAYS天到前END_DAYS天）
+    email_ids = fetch_scholar_emails(mail, start_days=START_DAYS, end_days=END_DAYS)
     
     if not email_ids:
         print("\n没有找到新的学术推送邮件")
         mail.close()
         mail.logout()
         return
-    
+        
     # 3. 处理邮件
     all_papers = []
     
@@ -517,6 +702,12 @@ def main():
                 for response_part in msg_data:
                     if isinstance(response_part, tuple):
                         msg = email.message_from_bytes(response_part[1])
+                        
+                        # 验证邮件日期是否在指定范围内
+                        if not is_email_in_date_range(msg, start_days=START_DAYS, end_days=END_DAYS):
+                            email_date_str = msg.get('Date', '未知')
+                            print(f"  跳过: 邮件日期不在范围内 ({email_date_str})")
+                            continue
                         
                         # 获取邮件正文
                         if msg.is_multipart():
@@ -605,15 +796,32 @@ def main():
     print("\n生成日报...")
     report = generate_daily_report(relevant_papers)
     
-    # 7. 保存报告（Markdown 格式）
+    # 7. 保存报告（Markdown 格式，命名方式与理想格式一致）
     output_dir = "reports"
     os.makedirs(output_dir, exist_ok=True)
     
-    filename = f"{output_dir}/paper_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    # 文件命名格式：Robotics_Academic_Daily_YYYYMMDD .md（注意有空格）
+    filename = f"{output_dir}/Robotics_Academic_Daily_{datetime.now().strftime('%Y%m%d')}.md"
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(report)
     
     print(f"\n✓ 报告已保存到: {filename}")
+    
+    # 7.1. 如果配置了备份路径，同时保存到备份目录
+    if BACKUP_DIR:
+        try:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            backup_filename = os.path.join(BACKUP_DIR, f"Robotics_Academic_Daily_{datetime.now().strftime('%Y%m%d')}.md")
+            with open(backup_filename, 'w', encoding='utf-8') as f:
+                f.write(report)
+            print(f"✓ 报告已另存到: {backup_filename}")
+        except Exception as e:
+            logging.warning(f"保存到备份目录失败: {str(e)}")
+            print(f"⚠ 警告: 无法保存到备份目录: {str(e)}")
+    
+    # 8. 导出高价值论文到Excel
+    export_high_value_papers_to_excel(relevant_papers, output_dir)
+    
     print("\n" + "=" * 80)
     print(report)
 
