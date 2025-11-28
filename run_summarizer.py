@@ -114,10 +114,13 @@ def remove_ansi_codes(text):
 # 创建 CrewAI 输出捕获类
 class CrewAILogWriter:
     """捕获 CrewAI 的 print 输出并写入文件"""
-    def __init__(self, log_file):
+    def __init__(self, log_file, log_callback=None):
         self.log_file = log_file
         self.terminal = sys.stdout
         self.file = open(log_file, 'a', encoding='utf-8')
+        self.log_callback = log_callback  # 用于实时发送日志的回调函数
+        self.buffer = ''  # 累积消息缓冲区
+        self.last_flush_time = 0  # 上次刷新时间
     
     def write(self, message):
         """写入消息到文件和终端"""
@@ -127,11 +130,17 @@ class CrewAILogWriter:
         cleaned_message = remove_ansi_codes(message)
         self.file.write(cleaned_message)
         self.file.flush()
+        
+        # 累积消息到缓冲区
+        if cleaned_message:
+            self.buffer += cleaned_message
     
     def flush(self):
         """刷新缓冲区"""
         self.terminal.flush()
         self.file.flush()
+        # 不再发送任何日志到前端
+        self.buffer = ''
     
     def close(self):
         """关闭文件"""
@@ -141,14 +150,23 @@ class CrewAILogWriter:
 
 # 全局 CrewAI 输出捕获器
 crewai_output_capture = None
+crewai_log_callback = None  # 全局日志回调函数
+agent_status_callback = None  # 全局agent状态回调函数
 
 
 @contextmanager
-def capture_crewai_output():
+def capture_crewai_output(log_callback=None):
     """上下文管理器：捕获 CrewAI 的输出到文件"""
-    global crewai_output_capture
-    if crewai_output_capture is None:
-        crewai_output_capture = CrewAILogWriter(crewai_log_file)
+    global crewai_output_capture, crewai_log_callback
+    
+    # 使用传入的回调或全局回调
+    callback = log_callback if log_callback is not None else crewai_log_callback
+    
+    if crewai_output_capture is None or (callback and crewai_output_capture.log_callback != callback):
+        crewai_output_capture = CrewAILogWriter(crewai_log_file, log_callback=callback)
+    elif callback:
+        # 更新回调函数
+        crewai_output_capture.log_callback = callback
     
     # 保存原始 stdout
     original_stdout = sys.stdout
@@ -172,7 +190,7 @@ QMAIL_PASSWORD = os.getenv('QMAIL_PASSWORD')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:32b')
 MAX_EMAILS = int(os.getenv('MAX_EMAILS', 20))
 # MAX_EMAILS = 23
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://192.168.2.170:11434')
 # 日期范围配置：从前START_DAYS天到前END_DAYS天
 # 例如：START_DAYS=3, END_DAYS=0 表示从前3天到今天
 #      START_DAYS=7, END_DAYS=3 表示从前7天到前3天
@@ -438,8 +456,10 @@ def fetch_scholar_emails(mail, start_days=1, end_days=0):
     status, messages = mail.search(None, search_criteria)
     
     email_ids = messages[0].split()
+    # 反转列表，使邮件从最新到最旧排序（IMAP默认返回的是从旧到新）
+    email_ids = list(reversed(email_ids))
     date_range_str = f"{start_date_obj.strftime('%Y-%m-%d')} 到 {end_date_obj.strftime('%Y-%m-%d')}"
-    print(f"✓ 找到 {len(email_ids)} 封邮件（日期范围: {date_range_str}）")
+    print(f"✓ 找到 {len(email_ids)} 封邮件（日期范围: {date_range_str}），将从最新邮件开始处理")
     
     return email_ids
 
@@ -1073,14 +1093,28 @@ def get_full_abstract(paper):
                 )
                 
                 # 创建PDF摘要提取任务
+                pdf_task = create_pdf_abstract_extraction_task(pdf_text_for_agent, paper_title)
+                pdf_agent = create_pdf_processor_agent()
+                
+                # 发送agent工作开始状态
+                send_agent_status("PDF摘要提取专家", "start", task=pdf_task)
+                
                 with capture_crewai_output():
                     pdf_crew = Crew(
-                        agents=[create_pdf_processor_agent()],
-                        tasks=[create_pdf_abstract_extraction_task(pdf_text_for_agent, paper_title)],
+                        agents=[pdf_agent],
+                        tasks=[pdf_task],
                         verbose=True,
                         share_crew=False
                     )
                     result = pdf_crew.kickoff()
+                
+                # 发送agent工作结束状态
+                send_agent_status("PDF摘要提取专家", "end", result=result)
+                
+                # 记录 Agent 的输入和输出
+                if crewai_log_callback:
+                    log_agent_io("PDF摘要提取专家", pdf_task, result, crewai_log_callback)
+                
                 agent_output = result.raw.strip()
                 
                 debug_logger.log(f"Agent返回结果长度: {len(agent_output)} 字符")
@@ -1206,14 +1240,28 @@ def get_full_abstract(paper):
             )
             
             # 创建网页摘要提取任务
+            web_task = create_web_abstract_extraction_task(html_for_agent, paper_title, url)
+            web_agent = create_web_abstract_extractor_agent()
+            
+            # 发送agent工作开始状态
+            send_agent_status("网页摘要提取专家", "start", task=web_task)
+            
             with capture_crewai_output():
                 web_crew = Crew(
-                    agents=[create_web_abstract_extractor_agent()],
-                    tasks=[create_web_abstract_extraction_task(html_for_agent, paper_title, url)],
+                    agents=[web_agent],
+                    tasks=[web_task],
                     verbose=True,
                     share_crew=False
                 )
                 result = web_crew.kickoff()
+            
+            # 发送agent工作结束状态
+            send_agent_status("网页摘要提取专家", "end", result=result)
+            
+            # 记录 Agent 的输入和输出
+            if crewai_log_callback:
+                log_agent_io("网页摘要提取专家", web_task, result, crewai_log_callback)
+            
             agent_output = result.raw.strip()
             
             debug_logger.log(f"Agent返回结果长度: {len(agent_output)} 字符")
@@ -1328,6 +1376,179 @@ def create_relevance_analyzer_agent():
         max_iter=2,
         max_execution_time=300
     )
+
+
+def extract_task_input(task_description):
+    """从任务描述中提取输入信息"""
+    input_section = ""
+    # 查找 "## 输入信息" 或 "**论文标题**" 等标记
+    if "## 输入信息" in task_description:
+        # 提取输入信息部分
+        start_idx = task_description.find("## 输入信息")
+        # 找到下一个 ## 开头的部分作为结束
+        remaining = task_description[start_idx:]
+        lines = remaining.split('\n')
+        input_lines = []
+        for line in lines:
+            if line.startswith('## ') and line != '## 输入信息':
+                break
+            input_lines.append(line)
+        input_section = '\n'.join(input_lines).replace('## 输入信息', '').strip()
+    else:
+        # 如果没有明确的输入信息部分，尝试提取关键信息
+        # 查找论文标题
+        if "**论文标题**" in task_description:
+            title_match = re.search(r'\*\*论文标题\*\*[：:]\s*(.+?)(?:\n|$)', task_description)
+            if title_match:
+                input_section += f"**论文标题**：{title_match.group(1).strip()}\n\n"
+        
+        # 查找邮件片段信息
+        if "**邮件片段信息**" in task_description:
+            snippet_match = re.search(r'\*\*邮件片段信息\*\*[：:]?\s*```\s*(.+?)```', task_description, re.DOTALL)
+            if snippet_match:
+                snippet_text = snippet_match.group(1).strip()
+                # 限制显示长度，避免过长
+                if len(snippet_text) > 500:
+                    snippet_text = snippet_text[:500] + "...\n[内容已截断]"
+                input_section += f"**邮件片段信息**：\n```\n{snippet_text}\n```\n\n"
+        
+        # 查找PDF文本内容
+        if "**PDF文本内容**" in task_description:
+            pdf_match = re.search(r'\*\*PDF文本内容\*\*[^`]*```\s*(.+?)```', task_description, re.DOTALL)
+            if pdf_match:
+                pdf_text = pdf_match.group(1).strip()
+                # 限制显示长度
+                if len(pdf_text) > 1000:
+                    pdf_text = pdf_text[:1000] + "...\n[内容已截断]"
+                input_section += f"**PDF文本内容**：\n```\n{pdf_text}\n```\n\n"
+        
+        # 查找网页文本内容
+        if "**网页文本内容**" in task_description:
+            web_match = re.search(r'\*\*网页文本内容\*\*[^`]*```\s*(.+?)```', task_description, re.DOTALL)
+            if web_match:
+                web_text = web_match.group(1).strip()
+                # 限制显示长度
+                if len(web_text) > 1000:
+                    web_text = web_text[:1000] + "...\n[内容已截断]"
+                input_section += f"**网页文本内容**：\n```\n{web_text}\n```\n\n"
+        
+        # 查找提取的摘要内容
+        if "**提取的摘要内容**" in task_description:
+            abstract_match = re.search(r'\*\*提取的摘要内容\*\*[：:]?\s*```\s*(.+?)```', task_description, re.DOTALL)
+            if abstract_match:
+                abstract_text = abstract_match.group(1).strip()
+                if len(abstract_text) > 1000:
+                    abstract_text = abstract_text[:1000] + "...\n[内容已截断]"
+                input_section += f"**提取的摘要内容**：\n```\n{abstract_text}\n```\n\n"
+        
+        # 查找原始摘要内容
+        if "**原始摘要内容**" in task_description:
+            abstract_match = re.search(r'\*\*原始摘要内容\*\*[：:]?\s*```\s*(.+?)```', task_description, re.DOTALL)
+            if abstract_match:
+                abstract_text = abstract_match.group(1).strip()
+                if len(abstract_text) > 1000:
+                    abstract_text = abstract_text[:1000] + "...\n[内容已截断]"
+                input_section += f"**原始摘要内容**：\n```\n{abstract_text}\n```\n\n"
+        
+        # 查找论文摘要（英文原文）
+        if "**论文摘要（英文原文）**" in task_description:
+            abstract_match = re.search(r'\*\*论文摘要（英文原文）\*\*[：:]?\s*```\s*(.+?)```', task_description, re.DOTALL)
+            if abstract_match:
+                abstract_text = abstract_match.group(1).strip()
+                if len(abstract_text) > 1000:
+                    abstract_text = abstract_text[:1000] + "...\n[内容已截断]"
+                input_section += f"**论文摘要（英文原文）**：\n```\n{abstract_text}\n```\n\n"
+        
+        # 查找论文内容（已翻译为中文）
+        if "**论文内容（已翻译为中文）**" in task_description:
+            content_match = re.search(r'\*\*论文内容（已翻译为中文）\*\*[：:]?\s*```\s*(.+?)```', task_description, re.DOTALL)
+            if content_match:
+                content_text = content_match.group(1).strip()
+                if len(content_text) > 1000:
+                    content_text = content_text[:1000] + "...\n[内容已截断]"
+                input_section += f"**论文内容（已翻译为中文）**：\n```\n{content_text}\n```\n\n"
+        
+        # 查找来源类型
+        if "**来源类型**" in task_description:
+            source_match = re.search(r'\*\*来源类型\*\*[：:]\s*(.+?)(?:\n|$)', task_description)
+            if source_match:
+                input_section += f"**来源类型**：{source_match.group(1).strip()}\n\n"
+    
+    return input_section.strip()
+
+
+def log_agent_io(agent_name, task, result, log_callback):
+    """记录 Agent 的输入和输出（已禁用，不再发送任何日志）"""
+    # 不再发送任何日志到前端
+    return
+
+
+def extract_paper_title_from_task(task_description):
+    """
+    从任务描述中提取论文标题
+    
+    Args:
+        task_description: 任务描述字符串
+        
+    Returns:
+        论文标题字符串，如果未找到则返回None
+    """
+    import re
+    
+    # 尝试匹配 "**论文标题**：" 或 "**论文标题（英文）**："
+    patterns = [
+        r'\*\*论文标题[（(]英文[）)]?\*\*[：:]\s*([^\n]+)',
+        r'\*\*论文标题\*\*[：:]\s*([^\n]+)',
+        r'论文标题[（(]英文[）)]?[：:]\s*([^\n]+)',
+        r'论文标题[：:]\s*([^\n]+)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, task_description)
+        if match:
+            title = match.group(1).strip()
+            # 移除可能的markdown格式标记
+            title = re.sub(r'^`+|`+$', '', title)
+            if title:
+                return title
+    
+    return None
+
+
+def send_agent_status(agent_name, status, task=None, result=None):
+    """
+    发送agent工作状态信息
+    
+    Args:
+        agent_name: agent名称
+        status: 状态，"start"或"end"
+        task: Task对象（用于提取目标信息）
+        result: 任务执行结果（用于提取输出信息）
+    """
+    global agent_status_callback
+    
+    if not agent_status_callback:
+        return
+    
+    target = None
+    output = None
+    
+    if status == 'start' and task:
+        # 从任务描述中提取论文标题
+        task_description = task.description if hasattr(task, 'description') else str(task)
+        target = extract_paper_title_from_task(task_description)
+    
+    if status == 'end' and result:
+        # 提取输出信息的前200个字符作为摘要
+        if hasattr(result, 'raw'):
+            output = result.raw.strip()
+        elif isinstance(result, str):
+            output = result.strip()
+        else:
+            output = str(result).strip()
+    
+    # 调用回调函数
+    agent_status_callback(agent_name, status, target, output)
 
 
 def create_relevance_analysis_task(paper):
@@ -1830,14 +2051,28 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
     try:
         # 步骤0: 验证摘要真实性
         print("  [步骤0/4] 验证摘要真实性...")
+        validation_task = create_abstract_validation_task(paper, full_abstract, source_type)
+        validation_agent = create_abstract_validator_agent()
+        
+        # 发送agent工作开始状态
+        send_agent_status("摘要真实性检查专家", "start", task=validation_task)
+        
         with capture_crewai_output():
             validation_crew = Crew(
-                agents=[create_abstract_validator_agent()],
-                tasks=[create_abstract_validation_task(paper, full_abstract, source_type)],
+                agents=[validation_agent],
+                tasks=[validation_task],
                 verbose=True,
                 share_crew=False
             )
             validation_result = validation_crew.kickoff()
+        
+        # 发送agent工作结束状态
+        send_agent_status("摘要真实性检查专家", "end", result=validation_result)
+        
+        # 记录 Agent 的输入和输出
+        if crewai_log_callback:
+            log_agent_io("摘要真实性检查专家", validation_task, validation_result, crewai_log_callback)
+        
         validation_output = validation_result.raw.strip()
         
         # 解析验证结果
@@ -1913,14 +2148,29 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
         
         # 步骤1: 清洗摘要
         print("  [步骤1/4] 清洗摘要中...")
+        cleaning_task = create_abstract_cleaning_task(full_abstract)
+        cleaning_agent = create_abstract_cleaner_agent()
+        
+        # 发送agent工作开始状态（清洗任务没有论文标题，直接从paper字典获取）
+        if agent_status_callback:
+            agent_status_callback("摘要清洗专家", "start", paper.get('title', ''), None)
+        
         with capture_crewai_output():
             cleaning_crew = Crew(
-                agents=[create_abstract_cleaner_agent()],
-                tasks=[create_abstract_cleaning_task(full_abstract)],
+                agents=[cleaning_agent],
+                tasks=[cleaning_task],
                 verbose=True,
                 share_crew=False
             )
             cleaning_result = cleaning_crew.kickoff()
+        
+        # 发送agent工作结束状态
+        send_agent_status("摘要清洗专家", "end", result=cleaning_result)
+        
+        # 记录 Agent 的输入和输出
+        if crewai_log_callback:
+            log_agent_io("摘要清洗专家", cleaning_task, cleaning_result, crewai_log_callback)
+        
         cleaned_abstract = cleaning_result.raw.strip()
         
         # 如果清洗失败，使用原始摘要
@@ -1934,26 +2184,54 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
         
         # 步骤2: 翻译
         print("  [步骤2/4] 专业翻译中...")
+        translation_task = create_translation_task(paper, cleaned_abstract)
+        translation_agent = create_translator_agent()
+        
+        # 发送agent工作开始状态
+        send_agent_status("专业翻译专家", "start", task=translation_task)
+        
         with capture_crewai_output():
             translation_crew = Crew(
-                agents=[create_translator_agent()],
-                tasks=[create_translation_task(paper, cleaned_abstract)],
+                agents=[translation_agent],
+                tasks=[translation_task],
                 verbose=True,
                 share_crew=False
             )
             translation_result = translation_crew.kickoff()
+        
+        # 发送agent工作结束状态
+        send_agent_status("专业翻译专家", "end", result=translation_result)
+        
+        # 记录 Agent 的输入和输出
+        if crewai_log_callback:
+            log_agent_io("专业翻译专家", translation_task, translation_result, crewai_log_callback)
+        
         translated_content = translation_result.raw.strip()
         
         # 步骤3: 评审
         print("  [步骤3/4] 专业评审和评分中...")
+        review_task = create_review_task(paper, translated_content)
+        review_agent = create_reviewer_agent()
+        
+        # 发送agent工作开始状态
+        send_agent_status("专业评审专家", "start", task=review_task)
+        
         with capture_crewai_output():
             review_crew = Crew(
-                agents=[create_reviewer_agent()],
-                tasks=[create_review_task(paper, translated_content)],
+                agents=[review_agent],
+                tasks=[review_task],
                 verbose=True,
                 share_crew=False
             )
             review_result = review_crew.kickoff()
+        
+        # 发送agent工作结束状态
+        send_agent_status("专业评审专家", "end", result=review_result)
+        
+        # 记录 Agent 的输入和输出
+        if crewai_log_callback:
+            log_agent_io("专业评审专家", review_task, review_result, crewai_log_callback)
+        
         review_text = review_result.raw.strip()
         
         # 提取评分
@@ -2130,6 +2408,15 @@ def generate_daily_report(relevant_papers):
             report.append(f"### {i}. {paper['title']}")
             report.append("")
             
+            # 添加翻译后的摘要（提到最前面）
+            translated_content = paper.get('translated_content', '')
+            # 如果翻译内容存在且不是错误信息，则显示翻译后的摘要
+            if translated_content and translated_content not in ["摘要提取失败，无法处理", "摘要验证失败：检测到可能是AI虚构生成的内容", "摘要验证失败：关键词检测发现生成标志"]:
+                report.append("**摘要**：")
+                report.append("")
+                report.append(translated_content)
+                report.append("")
+            
             # 添加评审内容
             review_content = paper.get('review', paper.get('summary', '')).strip()
             score_details = paper.get('score_details', {})
@@ -2140,21 +2427,6 @@ def generate_daily_report(relevant_papers):
             
             if review_content:
                 report.append(review_content)
-                report.append("")
-            
-            # 添加翻译后的摘要
-            translated_content = paper.get('translated_content', '')
-            # 如果翻译内容存在且不是错误信息，则显示翻译后的摘要
-            if translated_content and translated_content not in ["摘要提取失败，无法处理", "摘要验证失败：检测到可能是AI虚构生成的内容", "摘要验证失败：关键词检测发现生成标志"]:
-                report.append("**摘要**：")
-                report.append("")
-                # 如果摘要较长，使用代码块格式；否则直接显示
-                if len(translated_content) > 200:
-                    report.append("```")
-                    report.append(translated_content)
-                    report.append("```")
-                else:
-                    report.append(translated_content)
                 report.append("")
             
             # 检查review中是否已经包含评分详情，如果没有才添加
@@ -2185,6 +2457,15 @@ def generate_daily_report(relevant_papers):
             report.append(f"### {i}. {paper['title']}")
             report.append("")
             
+            # 添加翻译后的摘要（提到最前面）
+            translated_content = paper.get('translated_content', '')
+            # 如果翻译内容存在且不是错误信息，则显示翻译后的摘要
+            if translated_content and translated_content not in ["摘要提取失败，无法处理", "摘要验证失败：检测到可能是AI虚构生成的内容", "摘要验证失败：关键词检测发现生成标志"]:
+                report.append("**摘要**：")
+                report.append("")
+                report.append(translated_content)
+                report.append("")
+            
             # 添加评审内容
             review_content = paper.get('review', paper.get('summary', '')).strip()
             score_details = paper.get('score_details', {})
@@ -2195,21 +2476,6 @@ def generate_daily_report(relevant_papers):
             
             if review_content:
                 report.append(review_content)
-                report.append("")
-            
-            # 添加翻译后的摘要
-            translated_content = paper.get('translated_content', '')
-            # 如果翻译内容存在且不是错误信息，则显示翻译后的摘要
-            if translated_content and translated_content not in ["摘要提取失败，无法处理", "摘要验证失败：检测到可能是AI虚构生成的内容", "摘要验证失败：关键词检测发现生成标志"]:
-                report.append("**提取的摘要（已翻译）**：")
-                report.append("")
-                # 如果摘要较长，使用代码块格式；否则直接显示
-                if len(translated_content) > 200:
-                    report.append("```")
-                    report.append(translated_content)
-                    report.append("```")
-                else:
-                    report.append(translated_content)
                 report.append("")
             
             # 检查review中是否已经包含评分详情，如果没有才添加
@@ -2259,7 +2525,7 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
     """
     if not relevant_papers:
         print("\n没有相关论文需要导出")
-        return
+        return None
     
     # 按评分排序（处理成功的排在前面）
     relevant_papers_sorted = sorted(relevant_papers, 
@@ -2322,18 +2588,55 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
         print(f"  - 共导出 {len(relevant_papers)} 篇相关论文（符合关键词的论文）")
         print(f"  - 成功读取摘要: {successful_count} 篇")
         print(f"  - 摘要读取失败: {failed_count} 篇")
+        return csv_filename
     except Exception as e:
         logging.error(f"导出CSV时出错: {str(e)}")
         print(f"\n✗ 导出CSV失败: {str(e)}")
+        return None
 
 
 
-def main():
-    """主程序"""
+def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_generated=None, on_agent_status=None):
+    """
+    主程序
+    
+    Args:
+        on_log: 日志回调函数 (level, message)
+        on_paper_added: 论文添加回调函数 (paper)
+        on_paper_updated: 论文更新回调函数 (paper_id, paper)
+        on_file_generated: 文件生成回调函数 (file_info)
+        on_agent_status: agent状态回调函数 (agent_name, status, target, output)
+    """
     print("=" * 80)
     print("Paper Summarizer - 学术论文自动总结系统")
     print("=" * 80)
     print()
+    
+    # 设置全局日志回调（用于CrewAI输出捕获）
+    global crewai_log_callback, agent_status_callback
+    crewai_log_callback = on_log
+    agent_status_callback = on_agent_status
+    
+    # 辅助函数：发送日志
+    def log(level, message):
+        print(message)
+        if on_log:
+            on_log(level, message)
+    
+    # 辅助函数：发送论文添加
+    def paper_added(paper):
+        if on_paper_added:
+            on_paper_added(paper)
+    
+    # 辅助函数：发送论文更新
+    def paper_updated(paper_id, paper):
+        if on_paper_updated:
+            on_paper_updated(paper_id, paper)
+    
+    # 辅助函数：发送文件生成
+    def file_generated(file_info):
+        if on_file_generated:
+            on_file_generated(file_info)
     
     # 1. 根据模式选择数据源
     if LOCAL_MODE:
@@ -2466,14 +2769,22 @@ def main():
         
         try:
             # 使用CrewAI进行相关性分析
+            relevance_task = create_relevance_analysis_task(paper)
+            
+            # 发送agent工作开始状态
+            send_agent_status("相关性分析专家", "start", task=relevance_task)
+            
             with capture_crewai_output():
                 relevance_crew = Crew(
                     agents=[create_relevance_analyzer_agent()],
-                    tasks=[create_relevance_analysis_task(paper)],
+                    tasks=[relevance_task],
                     verbose=True,
                     share_crew=False
                 )
                 relevance_result = relevance_crew.kickoff()
+            
+            # 发送agent工作结束状态
+            send_agent_status("相关性分析专家", "end", result=relevance_result)
             
             relevance_output = relevance_result.raw.strip()
             debug_logger.log(f"相关性分析输出: {relevance_output[:200]}...")
@@ -2509,6 +2820,15 @@ def main():
                 relevant_papers.append(paper)
                 print(f"  ✓ 符合研究方向")
                 debug_logger.log(f"相关论文: {paper.get('title', '')[:60]} (判断依据: {explanation[:100]})", "SUCCESS")
+                # 发送论文添加回调
+                if on_paper_added:
+                    paper_id = f"paper_{len(relevant_papers)}"
+                    paper['_paper_id'] = paper_id  # 保存ID到paper对象中
+                    on_paper_added({
+                        'id': paper_id,
+                        'title': paper.get('title', ''),
+                        'status': 'pending'
+                    })
             else:
                 print(f"  ✗ 不符合研究方向")
                 debug_logger.log(f"不符合方向: {paper.get('title', '')[:60]} (判断依据: {explanation[:100] if explanation else '未提供'})")
@@ -2620,6 +2940,15 @@ def main():
             print(" [高价值论文 ⭐]")
         else:
             print()
+        
+        # 发送论文更新回调
+        if on_paper_updated:
+            paper_id = paper.get('_paper_id', f"paper_{i}")
+            on_paper_updated(paper_id, {
+                'status': 'success',
+                'abstract': paper.get('translated_content', ''),
+                'score': paper.get('score', 0.0)
+            })
     
     # 标记摘要提取失败的论文
     for paper in papers_without_abstract:
@@ -2648,6 +2977,16 @@ def main():
             f.write(report)
         
         print(f"\n✓ 报告已保存到: {filename}")
+        # 发送文件生成回调
+        if on_file_generated:
+            file_size = os.path.getsize(filename) if os.path.exists(filename) else 0
+            on_file_generated({
+                'name': os.path.basename(filename),
+                'path': filename,
+                'type': 'md',
+                'size': f"{file_size / 1024:.1f} KB",
+                'time': datetime.now().strftime('%H:%M:%S')
+            })
     else:
         print("\n没有成功处理的论文，不生成日报")
         debug_logger.log("没有成功处理的论文，不生成日报", "INFO")
@@ -2668,7 +3007,17 @@ def main():
             print(f"⚠ 警告: 无法保存到备份目录: {str(e)}")
     
     # 8. 导出所有符合关键词的论文到CSV（包含处理结果）
-    export_all_papers_to_csv(relevant_papers, output_dir)
+    csv_file = export_all_papers_to_csv(relevant_papers, output_dir)
+    # 发送CSV文件生成回调
+    if csv_file and on_file_generated:
+        file_size = os.path.getsize(csv_file) if os.path.exists(csv_file) else 0
+        on_file_generated({
+            'name': os.path.basename(csv_file),
+            'path': csv_file,
+            'type': 'csv',
+            'size': f"{file_size / 1024:.1f} KB",
+            'time': datetime.now().strftime('%H:%M:%S')
+        })
     
     # 关闭调试日志
     debug_logger.close()

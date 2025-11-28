@@ -17,6 +17,9 @@
 - 💾 **备份支持**：支持将报告自动备份到指定目录
 - 🐛 **调试模式**：支持开启调试模式，详细记录处理过程和 Agent 输出日志
 - 💻 **本地处理模式**：支持从本地 CSV 文件读取论文信息进行处理，避免重复处理相同邮件
+- 🌐 **Web 界面**：提供现代化的 Web 界面，实时显示处理进度、论文状态和 Agent 工作状态
+- 📡 **实时通信**：基于 WebSocket 的实时通信，支持实时日志推送和状态更新
+- 🎨 **可视化展示**：三面板布局（来源、对话、生成），直观展示论文处理流程和结果
 
 ## 🛠️ 技术栈
 
@@ -29,6 +32,8 @@
 - **BeautifulSoup** - HTML 解析
 - **YAML** - 配置文件
 - **Pandas** - 数据处理
+- **Flask** - Web 服务器框架
+- **Socket.IO** - WebSocket 实时通信库
 
 ## 📋 前置要求
 
@@ -55,7 +60,7 @@ pip install -r requirements.txt
 如果没有 `requirements.txt`，请安装以下依赖：
 
 ```bash
-pip install crewai python-dotenv pyyaml beautifulsoup4 ollama pandas requests PyMuPDF crawl4ai
+pip install crewai python-dotenv pyyaml beautifulsoup4 ollama pandas requests PyMuPDF crawl4ai flask flask-socketio
 ```
 
 ### 3. 配置环境变量
@@ -118,7 +123,27 @@ CSV_LINK_COLUMN=                  # 论文链接列索引（可选，从0开始�
 
 ## 📖 使用方法
 
-### 运行程序
+### 方式一：Web 界面（推荐）
+
+启动 Web 服务器：
+
+```bash
+python web_server.py
+```
+
+服务器启动后会自动打开浏览器访问 `http://localhost:5000`。Web 界面提供：
+
+- **左侧面板（来源）**：配置运行模式（本地模式/远程模式）、选择 CSV 文件或设置日期范围，查看论文列表和处理状态
+- **中间面板（对话）**：实时显示处理日志、Agent 工作状态和系统消息
+- **右侧面板（生成）**：显示生成的文件列表，点击可直接打开文件
+
+Web 界面支持：
+- 实时查看论文处理进度和状态
+- 查看每篇论文的摘要（点击论文可展开）
+- 实时查看 Agent 工作状态和输出
+- 一键打开生成的文件
+
+### 方式二：命令行模式
 
 ```bash
 python run_summarizer.py
@@ -166,6 +191,8 @@ CSV 文件说明：
 .
 ├── README.md                    # 项目说明文档
 ├── run_summarizer.py            # 主程序文件
+├── web_server.py                # Web 服务器（Flask + Socket.IO）
+├── web_interface.html           # Web 界面前端
 ├── keywords.yaml                # 关键词配置文件
 ├── requirements.txt             # Python 依赖列表
 ├── .env                         # 环境变量配置（不提交到 Git）
@@ -356,15 +383,35 @@ BACKUP_DIR=/path/to/backup/directory
 1. Ollama 服务是否正常运行
 2. 邮箱 IMAP 服务是否已开启（邮件模式）
 3. 环境变量是否正确配置
-4. Python 依赖是否完整安装
+4. Python 依赖是否完整安装（包括 Flask 和 Flask-SocketIO）
 5. 网络连接是否正常（需要访问论文网址）
-6. 如果开启调试模式，检查日志文件以获取详细错误信息
+6. Web 服务器端口 5000 是否被占用（可通过修改 `web_server.py` 中的端口号解决）
+7. 如果开启调试模式，检查日志文件以获取详细错误信息
 
 ---
 
 ## 📝 版本更新日志
 
-### v0.2 (当前版本)
+### v0.3 (当前版本)
+
+#### 核心功能新增
+- ✅ **Web 界面**：新增现代化的 Web 界面，提供更好的用户体验
+  - 三面板布局：来源面板（配置和论文列表）、对话面板（实时日志）、生成面板（文件列表）
+  - 实时状态更新：基于 WebSocket 的实时通信，实时显示处理进度和状态
+  - 论文状态可视化：直观显示每篇论文的处理状态（处理中、成功、失败）
+  - Agent 状态展示：实时显示各个 AI Agent 的工作状态和输出信息
+  - 文件管理：生成的文件可直接在界面中点击打开
+- ✅ **Web 服务器**：基于 Flask 和 Socket.IO 的 Web 服务器
+  - 支持本地模式和远程模式的配置切换
+  - 实时日志推送和状态更新
+  - 文件打开功能（自动使用系统默认程序打开文件）
+
+#### 技术改进
+- ✅ 重构 `main` 函数，支持回调函数机制，便于与 Web 服务器集成
+- ✅ 新增 Agent 状态回调，实时推送 Agent 工作状态到前端
+- ✅ 优化日志输出，支持分级日志（info、success、error、warning）
+
+### v0.2
 
 #### 核心功能改进
 - ✅ **相关性分析机制升级**：取消基于关键词的匹配机制，改用 AI Agent 进行智能相关性分析
