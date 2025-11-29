@@ -316,6 +316,23 @@
             animation: pulse 2s infinite;
         }
 
+        .run-button.waiting {
+            background: linear-gradient(135deg, var(--neon-orange), var(--neon-red));
+            animation: pulse 2s infinite;
+        }
+
+        .run-button.waiting::before {
+            content: '⏸';
+        }
+
+        .run-button.waiting:hover {
+            background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
+        }
+
+        .run-button.waiting:hover::before {
+            content: '▶';
+        }
+
         @keyframes pulse {
             0%, 100% { box-shadow: 0 0 20px rgba(123, 44, 191, 0.5); }
             50% { box-shadow: 0 0 40px rgba(123, 44, 191, 0.8), 0 0 60px rgba(123, 44, 191, 0.6); }
@@ -343,6 +360,14 @@
             border-color: var(--neon-cyan);
             box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
             transform: translateX(5px);
+        }
+
+        .paper-item[data-link]:hover {
+            cursor: pointer;
+        }
+
+        .paper-item:not([data-link]) {
+            cursor: default;
         }
 
         .paper-header {
@@ -426,6 +451,43 @@
         .paper-abstract.show {
             display: block;
             animation: slideDown 0.3s ease;
+        }
+
+        .paper-abstract-editable {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0, 20, 40, 0.6);
+            border-left: 3px solid var(--neon-cyan);
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--neon-cyan);
+            display: none;
+        }
+
+        .paper-abstract-editable.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        .paper-abstract-editable textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: vertical;
+            transition: all 0.3s;
+        }
+
+        .paper-abstract-editable textarea:focus {
+            outline: none;
+            border-color: var(--neon-purple);
+            box-shadow: 0 0 10px rgba(123, 44, 191, 0.5);
         }
 
         @keyframes slideDown {
@@ -756,6 +818,8 @@
         // Socket.IO连接
         let socket = null;
         let isRunning = false;
+        let isWaitingConfirmation = false;
+        let confirmationPapers = {};  // 存储等待确认的论文数据
 
         // DOM元素
         const modeRadios = document.querySelectorAll('input[name="mode"]');
@@ -829,15 +893,28 @@
                 case 'status':
                     if (data.status === 'running') {
                         isRunning = true;
+                        isWaitingConfirmation = false;
+                        runBtn.classList.remove('waiting');
                         runBtn.classList.add('running');
                         runBtn.textContent = '⏸ 运行中...';
                         runBtn.disabled = true;
+                    } else if (data.status === 'waiting_confirmation') {
+                        isRunning = false;
+                        isWaitingConfirmation = true;
+                        runBtn.classList.remove('running');
+                        runBtn.classList.add('waiting');
+                        runBtn.textContent = '⏸ 等待人工确认';
+                        runBtn.disabled = false;
                     } else if (data.status === 'completed') {
                         isRunning = false;
-                        runBtn.classList.remove('running');
+                        isWaitingConfirmation = false;
+                        runBtn.classList.remove('running', 'waiting');
                         runBtn.textContent = '▶ 开始运行';
                         runBtn.disabled = false;
                     }
+                    break;
+                case 'waiting_confirmation':
+                    handleWaitingConfirmation(data.papers);
                     break;
             }
         }
@@ -1014,17 +1091,113 @@
             const paperItem = document.createElement('div');
             paperItem.className = 'paper-item';
             paperItem.id = `paper-${paper.id}`;
+            // 保存链接到data属性
+            if (paper.link) {
+                paperItem.setAttribute('data-link', paper.link);
+            }
             paperItem.innerHTML = `
                 <div class="paper-header">
                     <div class="paper-title">${paper.title}</div>
                     <div class="paper-status pending">⏳</div>
                 </div>
-                <button class="paper-toggle" onclick="toggleAbstract('${paper.id}')" style="display: none;">
+                <button class="paper-toggle" onclick="event.stopPropagation(); toggleAbstract('${paper.id}')" style="display: none;">
                     ▼ 查看摘要
                 </button>
                 <div class="paper-abstract" id="abstract-${paper.id}"></div>
             `;
+            
+            // 添加点击事件：在新窗口打开论文链接
+            if (paper.link) {
+                paperItem.addEventListener('click', function(e) {
+                    // 如果点击的是摘要切换按钮、摘要区域或可编辑摘要区域，不打开链接
+                    if (e.target.closest('.paper-toggle') || 
+                        e.target.closest('.paper-abstract') || 
+                        e.target.closest('.paper-abstract-editable')) {
+                        return;
+                    }
+                    // 在新窗口打开链接
+                    window.open(paper.link, '_blank');
+                });
+            } else {
+                // 如果没有链接，移除指针样式
+                paperItem.style.cursor = 'default';
+            }
+            
             paperList.appendChild(paperItem);
+        }
+
+        // 处理等待确认消息
+        function handleWaitingConfirmation(papers) {
+            confirmationPapers = papers;
+            isWaitingConfirmation = true;
+            
+            // 为每篇论文添加可编辑的摘要框
+            for (const [paperId, paperData] of Object.entries(papers)) {
+                const paperItem = document.getElementById(`paper-${paperId}`);
+                if (!paperItem) continue;
+                
+                // 检查是否已有可编辑摘要框
+                let editableAbstract = paperItem.querySelector('.paper-abstract-editable');
+                if (!editableAbstract) {
+                    // 创建可编辑摘要框
+                    editableAbstract = document.createElement('div');
+                    editableAbstract.className = 'paper-abstract-editable';
+                    editableAbstract.id = `abstract-editable-${paperId}`;
+                    
+                    const textarea = document.createElement('textarea');
+                    textarea.id = `abstract-textarea-${paperId}`;
+                    textarea.value = paperData.abstract || '';
+                    textarea.placeholder = '请在此处编辑或粘贴论文摘要...';
+                    
+                    editableAbstract.appendChild(textarea);
+                    
+                    // 插入到论文项中（在摘要切换按钮之后）
+                    const toggleBtn = paperItem.querySelector('.paper-toggle');
+                    if (toggleBtn) {
+                        toggleBtn.insertAdjacentElement('afterend', editableAbstract);
+                    } else {
+                        const header = paperItem.querySelector('.paper-header');
+                        header.insertAdjacentElement('afterend', editableAbstract);
+                    }
+                } else {
+                    // 更新现有摘要框的内容
+                    const textarea = editableAbstract.querySelector('textarea');
+                    if (textarea) {
+                        textarea.value = paperData.abstract || '';
+                    }
+                }
+                
+                // 显示摘要切换按钮（如果还没有显示）
+                const toggleBtn = paperItem.querySelector('.paper-toggle');
+                if (toggleBtn) {
+                    toggleBtn.style.display = 'block';
+                    toggleBtn.textContent = '▼ 查看/编辑摘要';
+                    toggleBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        toggleEditableAbstract(paperId);
+                    };
+                }
+                
+                // 默认展开可编辑摘要框
+                editableAbstract.classList.add('show');
+            }
+            
+            addLog('info', `等待人工确认 ${Object.keys(papers).length} 篇论文的摘要`);
+        }
+
+        // 切换可编辑摘要显示
+        function toggleEditableAbstract(paperId) {
+            const editableAbstract = document.getElementById(`abstract-editable-${paperId}`);
+            const toggleBtn = editableAbstract ? editableAbstract.previousElementSibling : null;
+            
+            if (editableAbstract) {
+                editableAbstract.classList.toggle('show');
+                if (toggleBtn) {
+                    toggleBtn.textContent = editableAbstract.classList.contains('show') 
+                        ? '▲ 隐藏摘要' 
+                        : '▼ 查看/编辑摘要';
+                }
+            }
         }
 
         // 更新论文状态
@@ -1055,6 +1228,50 @@
             const toggleBtn = abstractEl.previousElementSibling;
             abstractEl.classList.toggle('show');
             toggleBtn.textContent = abstractEl.classList.contains('show') ? '▲ 隐藏摘要' : '▼ 查看摘要';
+        }
+        
+        // 打开论文链接
+        function openPaperLink(link) {
+            if (link) {
+                window.open(link, '_blank');
+            }
+        }
+
+        // 确认并继续运行
+        function confirmAndContinue() {
+            // 收集所有论文的确认后摘要
+            const confirmedPapers = {};
+            
+            for (const paperId of Object.keys(confirmationPapers)) {
+                const textarea = document.getElementById(`abstract-textarea-${paperId}`);
+                if (textarea) {
+                    confirmedPapers[paperId] = textarea.value.trim();
+                }
+            }
+            
+            // 发送确认请求
+            fetch('/api/confirm_abstracts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    papers: confirmedPapers
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addLog('success', '摘要确认完成，继续处理...');
+                    isWaitingConfirmation = false;
+                    confirmationPapers = {};
+                } else {
+                    addLog('error', `确认失败: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                addLog('error', `确认请求失败: ${error.message}`);
+            });
         }
 
         // 添加文件
@@ -1097,8 +1314,14 @@
                 });
         }
 
-        // 开始运行
+        // 开始运行或继续运行
         runBtn.addEventListener('click', () => {
+            // 如果正在等待确认，发送确认请求
+            if (isWaitingConfirmation) {
+                confirmAndContinue();
+                return;
+            }
+            
             if (isRunning) return;
 
             const mode = document.querySelector('input[name="mode"]:checked').value;

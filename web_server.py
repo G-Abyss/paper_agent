@@ -27,8 +27,14 @@ process_thread = None
 running_status = {
     'is_running': False,
     'papers': {},
-    'files': []
+    'files': [],
+    'waiting_confirmation': False,  # 是否等待人工确认
+    'confirmation_papers': {}  # 等待确认的论文数据
 }
+
+# 用于线程间通信的事件
+confirmation_event = threading.Event()
+confirmed_papers = {}  # 确认后的论文摘要数据
 
 def emit_log(level, message):
     """发送日志消息到前端"""
@@ -65,6 +71,18 @@ def emit_status(status):
     socketio.emit('message', {
         'type': 'status',
         'status': status
+    })
+
+def emit_waiting_confirmation(papers_data):
+    """
+    发送等待人工确认消息
+    
+    Args:
+        papers_data: 论文数据字典，格式为 {paper_id: {'title': ..., 'abstract': ..., 'link': ...}}
+    """
+    socketio.emit('message', {
+        'type': 'waiting_confirmation',
+        'papers': papers_data
     })
 
 def emit_agent_status(agent_name, status, target=None, output=None):
@@ -166,6 +184,26 @@ def get_status():
     """获取当前状态"""
     return jsonify(running_status)
 
+@app.route('/api/confirm_abstracts', methods=['POST'])
+def confirm_abstracts():
+    """确认论文摘要，继续处理"""
+    global confirmed_papers, confirmation_event, running_status
+    
+    try:
+        data = request.json
+        confirmed_papers = data.get('papers', {})  # {paper_id: abstract_text}
+        
+        # 更新运行状态
+        running_status['waiting_confirmation'] = False
+        
+        # 通知等待的线程继续执行
+        confirmation_event.set()
+        
+        emit_status('running')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @socketio.on('connect')
 def handle_connect():
     """Socket.IO连接"""
@@ -201,12 +239,41 @@ def run_summarizer_task(config):
         
         # 运行主程序（带回调）
         try:
+            def wait_for_confirmation(papers_data):
+                """等待人工确认"""
+                global running_status, confirmation_event, confirmed_papers
+                
+                # 更新状态
+                running_status['waiting_confirmation'] = True
+                running_status['confirmation_papers'] = papers_data
+                
+                # 发送等待确认消息
+                emit_waiting_confirmation(papers_data)
+                emit_status('waiting_confirmation')
+                
+                # 清空之前确认的数据
+                confirmed_papers = {}
+                
+                # 等待确认事件
+                confirmation_event.clear()
+                confirmation_event.wait()  # 阻塞等待确认
+                
+                # 返回确认后的摘要
+                return confirmed_papers
+            
+            def get_confirmed_abstracts():
+                """获取确认后的摘要"""
+                global confirmed_papers
+                return confirmed_papers
+            
             summarizer.main(
                 on_log=emit_log,
                 on_paper_added=emit_paper_added,
                 on_paper_updated=emit_paper_updated,
                 on_file_generated=emit_file_generated,
-                on_agent_status=emit_agent_status
+                on_agent_status=emit_agent_status,
+                on_waiting_confirmation=wait_for_confirmation,
+                get_confirmed_abstracts=get_confirmed_abstracts
             )
             emit_log('success', '任务完成！')
             emit_status('completed')

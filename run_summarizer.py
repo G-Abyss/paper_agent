@@ -190,7 +190,7 @@ QMAIL_PASSWORD = os.getenv('QMAIL_PASSWORD')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:32b')
 MAX_EMAILS = int(os.getenv('MAX_EMAILS', 20))
 # MAX_EMAILS = 23
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://192.168.2.170:11434')
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://192.168.2.169:11434')
 # 日期范围配置：从前START_DAYS天到前END_DAYS天
 # 例如：START_DAYS=3, END_DAYS=0 表示从前3天到今天
 #      START_DAYS=7, END_DAYS=3 表示从前7天到前3天
@@ -2596,7 +2596,7 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
 
 
 
-def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_generated=None, on_agent_status=None):
+def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_generated=None, on_agent_status=None, on_waiting_confirmation=None, get_confirmed_abstracts=None):
     """
     主程序
     
@@ -2606,6 +2606,8 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         on_paper_updated: 论文更新回调函数 (paper_id, paper)
         on_file_generated: 文件生成回调函数 (file_info)
         on_agent_status: agent状态回调函数 (agent_name, status, target, output)
+        on_waiting_confirmation: 等待确认回调函数 (papers_data) -> 返回确认后的摘要字典
+        get_confirmed_abstracts: 获取确认后的摘要函数 () -> 返回 {paper_id: abstract_text}
     """
     print("=" * 80)
     print("Paper Summarizer - 学术论文自动总结系统")
@@ -2827,6 +2829,7 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
                     on_paper_added({
                         'id': paper_id,
                         'title': paper.get('title', ''),
+                        'link': paper.get('link', ''),
                         'status': 'pending'
                     })
             else:
@@ -2901,13 +2904,49 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
                 print(f"  ✗ 获取摘要失败")
                 debug_logger.log(f"获取摘要失败，将跳过处理", "WARNING")
     
+    # 5.5. 人工确认摘要（如果启用了确认功能）
+    if on_waiting_confirmation and get_confirmed_abstracts:
+        print("\n等待人工确认摘要...")
+        debug_logger.log_separator("等待人工确认摘要")
+        
+        # 准备等待确认的论文数据
+        confirmation_papers_data = {}
+        for paper in relevant_papers:
+            paper_id = paper.get('_paper_id', '')
+            if paper_id:
+                confirmation_papers_data[paper_id] = {
+                    'title': paper.get('title', ''),
+                    'abstract': paper.get('full_abstract', ''),
+                    'link': paper.get('link', '')
+                }
+        
+        # 发送等待确认消息（这会阻塞等待用户确认）
+        confirmed_abstracts = on_waiting_confirmation(confirmation_papers_data)
+        log('info', f'已发送 {len(confirmation_papers_data)} 篇论文等待人工确认')
+        
+        # 更新论文摘要（使用确认后的摘要）
+        for paper in relevant_papers:
+            paper_id = paper.get('_paper_id', '')
+            if paper_id and paper_id in confirmed_abstracts:
+                confirmed_abstract = confirmed_abstracts[paper_id].strip()
+                if confirmed_abstract:
+                    paper['full_abstract'] = confirmed_abstract
+                    log('info', f'论文 {paper.get("title", "")[:50]} 摘要已确认')
+                else:
+                    # 如果确认后的摘要为空，标记为失败
+                    paper['full_abstract'] = None
+                    log('warning', f'论文 {paper.get("title", "")[:50]} 确认后的摘要为空，将跳过处理')
+        
+        print("\n人工确认完成，继续处理...")
+        debug_logger.log("人工确认完成，继续处理")
+    
     # 6. 使用 CrewAI 处理论文：验证 + 翻译 + 评审（仅处理摘要提取成功的论文）
     print("\n正在使用AI处理论文（验证 + 翻译 + 评审）...")
     debug_logger.log_separator("翻译和评审处理")
     
     # 筛选出摘要提取成功的论文
-    papers_with_abstract = [p for p in relevant_papers if p.get('full_abstract') is not None]
-    papers_without_abstract = [p for p in relevant_papers if p.get('full_abstract') is None]
+    papers_with_abstract = [p for p in relevant_papers if p.get('full_abstract') is not None and p.get('full_abstract').strip()]
+    papers_without_abstract = [p for p in relevant_papers if not (p.get('full_abstract') and p.get('full_abstract').strip())]
     
     print(f"  摘要提取成功: {len(papers_with_abstract)} 篇，将进行翻译和评审")
     print(f"  摘要提取失败: {len(papers_without_abstract)} 篇，将跳过处理")
@@ -2944,19 +2983,49 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         # 发送论文更新回调
         if on_paper_updated:
             paper_id = paper.get('_paper_id', f"paper_{i}")
+            
+            # 判断处理是否成功：检查是否包含错误信息
+            translated_content = paper.get('translated_content', '')
+            review_content = paper.get('review', '')
+            
+            # 定义错误关键词
+            error_keywords = [
+                '摘要验证失败',
+                '翻译失败',
+                '评审失败',
+                '摘要提取失败',
+                '无法处理'
+            ]
+            
+            # 检查是否包含错误信息
+            is_error = any(keyword in translated_content or keyword in review_content 
+                          for keyword in error_keywords)
+            
+            # 根据处理结果设置状态
+            paper_status = 'error' if is_error else 'success'
+            
             on_paper_updated(paper_id, {
-                'status': 'success',
-                'abstract': paper.get('translated_content', ''),
+                'status': paper_status,
+                'abstract': translated_content,
                 'score': paper.get('score', 0.0)
             })
     
     # 标记摘要提取失败的论文
-    for paper in papers_without_abstract:
+    for idx, paper in enumerate(papers_without_abstract, 1):
         paper['translated_content'] = "摘要提取失败，无法处理"
         paper['review'] = "摘要提取失败，无法处理"
         paper['score'] = 0.0
         paper['score_details'] = {}
         paper['is_high_value'] = False
+        
+        # 发送论文更新回调（摘要提取失败，状态为error）
+        if on_paper_updated:
+            paper_id = paper.get('_paper_id', f"paper_failed_{idx}")
+            on_paper_updated(paper_id, {
+                'status': 'error',
+                'abstract': "摘要提取失败，无法处理",
+                'score': 0.0
+            })
     
     # 6. 生成日报（只包含成功处理的论文）
     # 只包含成功处理的论文（有review和score_details的）
