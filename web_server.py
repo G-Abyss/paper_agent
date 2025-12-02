@@ -28,7 +28,8 @@ running_status = {
     'is_running': False,
     'papers': {},
     'files': [],
-    'waiting_confirmation': False,  # 是否等待人工确认
+    'waiting_confirmation': False,  # 是否等待人工确认（批量模式，已弃用）
+    'confirmed_abstracts': {},  # 已确认的摘要 {paper_id: abstract_text}
     'confirmation_papers': {}  # 等待确认的论文数据
 }
 
@@ -59,6 +60,13 @@ def emit_paper_updated(paper_id, paper):
         'paper': paper
     })
 
+def emit_paper_removed(paper_id):
+    """发送论文删除消息"""
+    socketio.emit('message', {
+        'type': 'paper_removed',
+        'paper_id': paper_id
+    })
+
 def emit_file_generated(file_info):
     """发送文件生成消息"""
     socketio.emit('message', {
@@ -75,7 +83,7 @@ def emit_status(status):
 
 def emit_waiting_confirmation(papers_data):
     """
-    发送等待人工确认消息
+    发送等待人工确认消息（批量模式，已弃用）
     
     Args:
         papers_data: 论文数据字典，格式为 {paper_id: {'title': ..., 'abstract': ..., 'link': ...}}
@@ -83,6 +91,20 @@ def emit_waiting_confirmation(papers_data):
     socketio.emit('message', {
         'type': 'waiting_confirmation',
         'papers': papers_data
+    })
+
+def emit_paper_ready_for_confirmation(paper_id, paper_data):
+    """
+    发送单个论文准备确认消息（实时模式）
+    
+    Args:
+        paper_id: 论文ID
+        paper_data: 论文数据字典，格式为 {'title': ..., 'abstract': ..., 'link': ...}
+    """
+    socketio.emit('message', {
+        'type': 'paper_ready_for_confirmation',
+        'paper_id': paper_id,
+        'paper': paper_data
     })
 
 def emit_agent_status(agent_name, status, target=None, output=None):
@@ -186,7 +208,7 @@ def get_status():
 
 @app.route('/api/confirm_abstracts', methods=['POST'])
 def confirm_abstracts():
-    """确认论文摘要，继续处理"""
+    """确认论文摘要，继续处理（批量模式，已弃用）"""
     global confirmed_papers, confirmation_event, running_status
     
     try:
@@ -203,6 +225,7 @@ def confirm_abstracts():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -266,14 +289,21 @@ def run_summarizer_task(config):
                 global confirmed_papers
                 return confirmed_papers
             
+            def paper_ready_for_confirmation(paper_id, paper_data):
+                """单个论文准备确认（立即显示可编辑摘要框，不阻塞）"""
+                emit_paper_ready_for_confirmation(paper_id, paper_data)
+            
             summarizer.main(
                 on_log=emit_log,
                 on_paper_added=emit_paper_added,
                 on_paper_updated=emit_paper_updated,
+                on_paper_removed=emit_paper_removed,
                 on_file_generated=emit_file_generated,
                 on_agent_status=emit_agent_status,
                 on_waiting_confirmation=wait_for_confirmation,
-                get_confirmed_abstracts=get_confirmed_abstracts
+                get_confirmed_abstracts=get_confirmed_abstracts,
+                on_paper_ready_for_confirmation=paper_ready_for_confirmation,
+                get_confirmed_abstract=None  # 不再需要实时确认
             )
             emit_log('success', '任务完成！')
             emit_status('completed')

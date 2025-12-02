@@ -743,6 +743,9 @@
         <div class="left-panel panel">
             <div class="panel-header">
                 <h2>来源</h2>
+                <div class="paper-stats" id="paper-stats" style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 5px;">
+                    总计: 0 | 成功: 0 | 失败: 0 | 等待: 0
+                </div>
             </div>
             <div class="run-options">
                 <div class="option-group">
@@ -768,14 +771,12 @@
                     <label>日期范围</label>
                     <div class="date-inputs">
                         <div style="flex: 1;">
-                            <label style="display: block; font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">开始时间（天数）</label>
-                            <input type="number" class="input-field" id="start-days" 
-                                   placeholder="从前N天开始" value="1" min="0">
+                            <label style="display: block; font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">开始日期</label>
+                            <input type="date" class="input-field" id="start-date">
                         </div>
                         <div style="flex: 1;">
-                            <label style="display: block; font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">结束时间（天数）</label>
-                            <input type="number" class="input-field" id="end-days" 
-                                   placeholder="到前N天结束" value="0" min="0">
+                            <label style="display: block; font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">结束日期</label>
+                            <input type="date" class="input-field" id="end-date">
                         </div>
                     </div>
                 </div>
@@ -830,6 +831,34 @@
         const logContainer = document.getElementById('log-container');
         const fileList = document.getElementById('file-list');
 
+        // 设置默认日期（昨天和今天）
+        function setDefaultDates() {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            const startDateInput = document.getElementById('start-date');
+            const endDateInput = document.getElementById('end-date');
+            
+            // 格式化为 YYYY-MM-DD
+            const formatDate = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            
+            if (startDateInput) {
+                startDateInput.value = formatDate(yesterday);
+            }
+            if (endDateInput) {
+                endDateInput.value = formatDate(today);
+            }
+        }
+        
+        // 初始化时设置默认日期
+        setDefaultDates();
+        
         // 模式切换
         modeRadios.forEach(radio => {
             radio.addEventListener('change', (e) => {
@@ -884,6 +913,9 @@
                 case 'paper_updated':
                     updatePaper(data.paper_id, data.paper);
                     break;
+                case 'paper_removed':
+                    removePaper(data.paper_id);
+                    break;
                 case 'file_generated':
                     addFile(data.file);
                     break;
@@ -915,6 +947,9 @@
                     break;
                 case 'waiting_confirmation':
                     handleWaitingConfirmation(data.papers);
+                    break;
+                case 'paper_ready_for_confirmation':
+                    handlePaperReadyForConfirmation(data.paper_id, data.paper);
                     break;
             }
         }
@@ -1056,12 +1091,25 @@
                 }
             } else if (status === 'end') {
                 statusText = `[ ${agentName} 工作结束 ]`;
+                const contentParts = [];
+                
+                // 如果有目标论文，先显示目标论文
+                if (target) {
+                    contentParts.push(`目标论文：${escapeHtml(target)}`);
+                }
+                
+                // 如果有输出，显示输出
                 if (output) {
                     // 输出信息可能很长，只显示前200字符
                     const outputPreview = output.length > 200 ? output.substring(0, 200) + '...' : output;
-                    contentText = escapeHtml(`输出：${outputPreview}`);
-                } else {
+                    contentParts.push(`输出：${escapeHtml(outputPreview)}`);
+                }
+                
+                // 如果都没有，显示默认消息
+                if (contentParts.length === 0) {
                     contentText = escapeHtml(message || `${agentName}工作完成`);
+                } else {
+                    contentText = contentParts.join('<br>');
                 }
             } else {
                 statusText = `[ ${agentName} ]`;
@@ -1079,6 +1127,33 @@
         }
 
         // 添加论文
+        // 更新统计信息
+        function updatePaperStats() {
+            const statsEl = document.getElementById('paper-stats');
+            if (!statsEl) return;
+            
+            const papers = paperList.querySelectorAll('.paper-item');
+            let total = papers.length;
+            let success = 0;
+            let error = 0;
+            let pending = 0;
+            
+            papers.forEach(paper => {
+                const statusEl = paper.querySelector('.paper-status');
+                if (statusEl) {
+                    if (statusEl.classList.contains('success')) {
+                        success++;
+                    } else if (statusEl.classList.contains('error')) {
+                        error++;
+                    } else if (statusEl.classList.contains('pending')) {
+                        pending++;
+                    }
+                }
+            });
+            
+            statsEl.textContent = `总计: ${total} | 成功: ${success} | 失败: ${error} | 等待: ${pending}`;
+        }
+
         function addPaper(paper) {
             // 移除"处理中..."提示
             if (paperList.children.length === 1) {
@@ -1088,6 +1163,13 @@
                 }
             }
 
+            // 检查是否已存在（避免重复添加）
+            const existingPaper = document.getElementById(`paper-${paper.id}`);
+            if (existingPaper) {
+                console.log(`论文 ${paper.id} 已存在，跳过添加`);
+                return;
+            }
+
             const paperItem = document.createElement('div');
             paperItem.className = 'paper-item';
             paperItem.id = `paper-${paper.id}`;
@@ -1095,9 +1177,14 @@
             if (paper.link) {
                 paperItem.setAttribute('data-link', paper.link);
             }
+            // 保存状态到data属性，便于排序
+            paperItem.setAttribute('data-status', paper.status || 'pending');
+            // 保存标题到data属性，便于搜索
+            paperItem.setAttribute('data-title', paper.title.toLowerCase());
+            
             paperItem.innerHTML = `
                 <div class="paper-header">
-                    <div class="paper-title">${paper.title}</div>
+                    <div class="paper-title" title="${escapeHtml(paper.title)}">${escapeHtml(paper.title)}</div>
                     <div class="paper-status pending">⏳</div>
                 </div>
                 <button class="paper-toggle" onclick="event.stopPropagation(); toggleAbstract('${paper.id}')" style="display: none;">
@@ -1124,67 +1211,91 @@
             }
             
             paperList.appendChild(paperItem);
+            updatePaperStats();
         }
 
-        // 处理等待确认消息
+        // 处理等待确认消息（批量模式，已弃用）
         function handleWaitingConfirmation(papers) {
             confirmationPapers = papers;
             isWaitingConfirmation = true;
             
             // 为每篇论文添加可编辑的摘要框
             for (const [paperId, paperData] of Object.entries(papers)) {
-                const paperItem = document.getElementById(`paper-${paperId}`);
-                if (!paperItem) continue;
-                
-                // 检查是否已有可编辑摘要框
-                let editableAbstract = paperItem.querySelector('.paper-abstract-editable');
-                if (!editableAbstract) {
-                    // 创建可编辑摘要框
-                    editableAbstract = document.createElement('div');
-                    editableAbstract.className = 'paper-abstract-editable';
-                    editableAbstract.id = `abstract-editable-${paperId}`;
-                    
-                    const textarea = document.createElement('textarea');
-                    textarea.id = `abstract-textarea-${paperId}`;
-                    textarea.value = paperData.abstract || '';
-                    textarea.placeholder = '请在此处编辑或粘贴论文摘要...';
-                    
-                    editableAbstract.appendChild(textarea);
-                    
-                    // 插入到论文项中（在摘要切换按钮之后）
-                    const toggleBtn = paperItem.querySelector('.paper-toggle');
-                    if (toggleBtn) {
-                        toggleBtn.insertAdjacentElement('afterend', editableAbstract);
-                    } else {
-                        const header = paperItem.querySelector('.paper-header');
-                        header.insertAdjacentElement('afterend', editableAbstract);
-                    }
-                } else {
-                    // 更新现有摘要框的内容
-                    const textarea = editableAbstract.querySelector('textarea');
-                    if (textarea) {
-                        textarea.value = paperData.abstract || '';
-                    }
-                }
-                
-                // 显示摘要切换按钮（如果还没有显示）
-                const toggleBtn = paperItem.querySelector('.paper-toggle');
-                if (toggleBtn) {
-                    toggleBtn.style.display = 'block';
-                    toggleBtn.textContent = '▼ 查看/编辑摘要';
-                    toggleBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        toggleEditableAbstract(paperId);
-                    };
-                }
-                
-                // 默认展开可编辑摘要框
-                editableAbstract.classList.add('show');
+                addEditableAbstractToPaper(paperId, paperData);
             }
             
             addLog('info', `等待人工确认 ${Object.keys(papers).length} 篇论文的摘要`);
         }
-
+        
+        // 处理单个论文准备确认消息（实时模式）
+        function handlePaperReadyForConfirmation(paperId, paperData) {
+            const paperItem = document.getElementById(`paper-${paperId}`);
+            if (!paperItem) {
+                console.warn(`论文 ${paperId} 不存在，无法显示确认框`);
+                return;
+            }
+            
+            // 添加可编辑摘要框
+            addEditableAbstractToPaper(paperId, paperData);
+            
+            if (paperData.abstract && paperData.abstract.trim()) {
+                addLog('info', `论文 "${paperData.title}" 摘要已提取，可以编辑摘要`);
+            } else {
+                addLog('info', `论文 "${paperData.title}" 摘要提取失败，可以手动添加摘要`);
+            }
+        }
+        
+        // 为论文添加可编辑摘要框（通用函数）
+        function addEditableAbstractToPaper(paperId, paperData) {
+            const paperItem = document.getElementById(`paper-${paperId}`);
+            if (!paperItem) return;
+            
+            // 检查是否已有可编辑摘要框
+            let editableAbstract = paperItem.querySelector('.paper-abstract-editable');
+            if (!editableAbstract) {
+                // 创建可编辑摘要框
+                editableAbstract = document.createElement('div');
+                editableAbstract.className = 'paper-abstract-editable';
+                editableAbstract.id = `abstract-editable-${paperId}`;
+                
+                const textarea = document.createElement('textarea');
+                textarea.id = `abstract-textarea-${paperId}`;
+                textarea.value = paperData.abstract || '';
+                textarea.placeholder = '请在此处编辑或粘贴论文摘要...';
+                
+                editableAbstract.appendChild(textarea);
+                
+                // 插入到论文项中（在摘要切换按钮之后）
+                const toggleBtn = paperItem.querySelector('.paper-toggle');
+                if (toggleBtn) {
+                    toggleBtn.insertAdjacentElement('afterend', editableAbstract);
+                } else {
+                    const header = paperItem.querySelector('.paper-header');
+                    header.insertAdjacentElement('afterend', editableAbstract);
+                }
+            } else {
+                // 更新现有摘要框的内容
+                const textarea = editableAbstract.querySelector('textarea');
+                if (textarea) {
+                    textarea.value = paperData.abstract || '';
+                }
+            }
+            
+            // 显示摘要切换按钮（如果还没有显示）
+            const toggleBtn = paperItem.querySelector('.paper-toggle');
+            if (toggleBtn) {
+                toggleBtn.style.display = 'block';
+                toggleBtn.textContent = '▼ 查看/编辑摘要';
+                toggleBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    toggleEditableAbstract(paperId);
+                };
+            }
+            
+            // 默认展开可编辑摘要框
+            editableAbstract.classList.add('show');
+        }
+        
         // 切换可编辑摘要显示
         function toggleEditableAbstract(paperId) {
             const editableAbstract = document.getElementById(`abstract-editable-${paperId}`);
@@ -1209,16 +1320,79 @@
             const toggleBtn = paperItem.querySelector('.paper-toggle');
             const abstractEl = paperItem.querySelector('.paper-abstract');
 
+            // 状态映射
+            const statusMap = {
+                'pending': { icon: '⏳', class: 'pending', text: '等待处理' },
+                'analyzing_relevance': { icon: '🔍', class: 'pending', text: '相关性分析中' },
+                'extracting_abstract': { icon: '📄', class: 'pending', text: '摘要提取中' },
+                'abstract_extracted': { icon: '✓', class: 'pending', text: '摘要提取成功' },
+                'abstract_extraction_failed': { icon: '✗', class: 'pending', text: '摘要提取失败' },
+                'waiting_confirmation': { icon: '✋', class: 'pending', text: '等待人工确认' },
+                'abstract_confirmed': { icon: '✓', class: 'pending', text: '摘要已确认' },
+                'validating_cleaning': { icon: '🔎', class: 'pending', text: '验证与清洗中' },
+                'translating': { icon: '🌐', class: 'pending', text: '翻译中' },
+                'reviewing': { icon: '⭐', class: 'pending', text: '评审中' },
+                'success': { icon: '✓', class: 'success', text: '处理完成' },
+                'error': { icon: '✗', class: 'error', text: '处理失败' }
+            };
+
+            // 获取状态信息
+            const statusInfo = statusMap[paper.status] || statusMap['pending'];
+            
+            // 更新状态图标和样式
+            statusEl.className = `paper-status ${statusInfo.class}`;
+            statusEl.textContent = statusInfo.icon;
+            statusEl.setAttribute('title', paper.status_text || statusInfo.text);
+            paperItem.setAttribute('data-status', paper.status || 'pending');
+
+            // 如果状态文本存在，在标题下方显示状态文本
+            let statusTextEl = paperItem.querySelector('.paper-status-text');
+            if (paper.status_text && paper.status !== 'success' && paper.status !== 'error') {
+                if (!statusTextEl) {
+                    statusTextEl = document.createElement('div');
+                    statusTextEl.className = 'paper-status-text';
+                    statusTextEl.style.cssText = 'font-size: 11px; color: rgba(0, 217, 255, 0.7); margin-top: 5px;';
+                    const header = paperItem.querySelector('.paper-header');
+                    header.insertAdjacentElement('afterend', statusTextEl);
+                }
+                statusTextEl.textContent = paper.status_text;
+                statusTextEl.style.display = 'block';
+            } else if (statusTextEl) {
+                statusTextEl.style.display = 'none';
+            }
+
+            // 处理成功状态
             if (paper.status === 'success') {
-                statusEl.className = 'paper-status success';
-                statusEl.textContent = '✓';
                 if (paper.abstract) {
                     toggleBtn.style.display = 'block';
                     abstractEl.textContent = paper.abstract;
                 }
-            } else if (paper.status === 'error') {
-                statusEl.className = 'paper-status error';
-                statusEl.textContent = '✗';
+            }
+            
+            // 更新标题（如果提供了新标题）
+            if (paper.title) {
+                const titleEl = paperItem.querySelector('.paper-title');
+                if (titleEl) {
+                    titleEl.textContent = paper.title;
+                    titleEl.setAttribute('title', paper.title);
+                    paperItem.setAttribute('data-title', paper.title.toLowerCase());
+                }
+            }
+            
+            // 更新链接（如果提供了新链接）
+            if (paper.link) {
+                paperItem.setAttribute('data-link', paper.link);
+            }
+            
+            updatePaperStats();
+        }
+        
+        // 删除论文
+        function removePaper(paperId) {
+            const paperItem = document.getElementById(`paper-${paperId}`);
+            if (paperItem) {
+                paperItem.remove();
+                updatePaperStats();
             }
         }
 
@@ -1236,16 +1410,30 @@
                 window.open(link, '_blank');
             }
         }
-
+        
         // 确认并继续运行
         function confirmAndContinue() {
-            // 收集所有论文的确认后摘要
+            // 收集所有可编辑摘要框的内容（包括实时显示的）
             const confirmedPapers = {};
             
-            for (const paperId of Object.keys(confirmationPapers)) {
-                const textarea = document.getElementById(`abstract-textarea-${paperId}`);
-                if (textarea) {
-                    confirmedPapers[paperId] = textarea.value.trim();
+            // 收集所有可编辑摘要框（包括空摘要，用户可能已经手动添加）
+            const allTextareas = document.querySelectorAll('textarea[id^="abstract-textarea-"]');
+            allTextareas.forEach(textarea => {
+                const paperId = textarea.id.replace('abstract-textarea-', '');
+                const abstractText = textarea.value.trim();
+                // 即使摘要为空也收集，因为用户可能正在编辑或已经确认为空
+                confirmedPapers[paperId] = abstractText;
+            });
+            
+            // 如果没有收集到任何摘要框，尝试从 confirmationPapers 中收集
+            if (Object.keys(confirmedPapers).length === 0) {
+                for (const paperId of Object.keys(confirmationPapers)) {
+                    const textarea = document.getElementById(`abstract-textarea-${paperId}`);
+                    if (textarea) {
+                        const abstractText = textarea.value.trim();
+                        // 即使摘要为空也收集
+                        confirmedPapers[paperId] = abstractText;
+                    }
                 }
             }
             
@@ -1262,7 +1450,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    addLog('success', '摘要确认完成，继续处理...');
+                    addLog('success', `已确认 ${Object.keys(confirmedPapers).length} 篇论文的摘要，继续处理...`);
                     isWaitingConfirmation = false;
                     confirmationPapers = {};
                 } else {
@@ -1332,8 +1520,31 @@
             if (mode === 'local') {
                 config.csv_path = document.getElementById('csv-path').value;
             } else {
-                config.start_days = parseInt(document.getElementById('start-days').value);
-                config.end_days = parseInt(document.getElementById('end-days').value);
+                // 将日期转换为天数
+                const startDateInput = document.getElementById('start-date');
+                const endDateInput = document.getElementById('end-date');
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                if (startDateInput.value) {
+                    const startDate = new Date(startDateInput.value);
+                    startDate.setHours(0, 0, 0, 0);
+                    const diffTime = today - startDate;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    config.start_days = diffDays;
+                } else {
+                    config.start_days = 1; // 默认昨天
+                }
+                
+                if (endDateInput.value) {
+                    const endDate = new Date(endDateInput.value);
+                    endDate.setHours(0, 0, 0, 0);
+                    const diffTime = today - endDate;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    config.end_days = diffDays;
+                } else {
+                    config.end_days = 0; // 默认今天
+                }
             }
 
             // 清空列表

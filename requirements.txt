@@ -10,4 +10,5 @@ PyMuPDF>=1.23.0
 crawl4ai>=0.3.0
 flask>=2.3.0
 flask-socketio>=5.3.0
+arxiv>=2.1.0
 

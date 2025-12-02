@@ -17,6 +17,10 @@ from bs4 import BeautifulSoup
 import time
 import ssl
 from crewai import Agent, Task, Crew, LLM
+try:
+    from crewai.tools import tool
+except ImportError:
+    raise ImportError("无法导入 tool，请检查 crewai_tools 是否正确安装。请运行: pip install 'crewai[tools]'")
 import logging
 import pandas as pd
 import requests
@@ -29,6 +33,7 @@ import warnings
 import atexit
 import sys
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 禁用 CrewAI 遥测（可选）
 os.environ['CREWAI_TELEMETRY_OPT_OUT'] = 'true'
@@ -1364,12 +1369,132 @@ def get_full_abstract(paper):
         return None, False  # 无法获取URL内容，返回None
 
 
+# 创建工具函数供agent使用
+@tool("网页内容获取工具")
+def fetch_webpage_content(url: str) -> str:
+    """
+    从论文URL获取网页内容。当邮件片段信息不足时，可以使用此工具获取论文网页的详细内容（包括摘要、介绍等）来辅助判断相关性。输入参数：url (字符串，论文的URL)
+    """
+    try:
+        # 先提取真实URL（处理跳转链接）
+        real_url = extract_real_url_from_redirect(url)
+        if real_url:
+            url = real_url
+        
+        # 使用requests获取网页内容
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        response.raise_for_status()
+        
+        # 使用BeautifulSoup提取文本
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # 移除script和style标签
+        for script in soup(["script", "style", "nav", "header", "footer"]):
+            script.decompose()
+        text = soup.get_text(separator=' ', strip=True)
+        
+        # 限制长度，返回前5000字符
+        return text[:5000] if len(text) > 5000 else text
+    except Exception as e:
+        return f"获取网页内容失败: {str(e)}"
+
+
+@tool("arXiv论文下载工具")
+def arxiv_download_tool(paper_url: str) -> str:
+    """
+    检查论文URL是否为arXiv论文，如果是则自动下载PDF并提取文本内容（前3页）。当检测到论文可能来自arXiv时，可以使用此工具获取论文的完整内容来辅助判断相关性。输入参数：paper_url (字符串，论文的URL)
+    """
+    try:
+        # 提取真实URL
+        real_url = extract_real_url_from_redirect(paper_url)
+        if real_url:
+            paper_url = real_url
+        
+        # 检查是否为arXiv URL
+        arxiv_pattern = r'arxiv\.org/(?:pdf|abs)/(\d+\.\d+)'
+        match = re.search(arxiv_pattern, paper_url, re.I)
+        
+        if not match:
+            return "不是arXiv论文"
+        
+        arxiv_id = match.group(1)
+        pdf_bytes = None
+        
+        # 尝试使用arxiv库下载
+        try:
+            import arxiv
+            # 使用新的Client API（避免弃用警告）
+            client = arxiv.Client()
+            search = arxiv.Search(id_list=[arxiv_id])
+            paper = next(client.results(search), None)
+            
+            if paper:
+                # 下载PDF
+                pdf_bytes = paper.download_pdf()
+            else:
+                return f"未找到arXiv论文: {arxiv_id}"
+        except ImportError:
+            # 如果arxiv库未安装，尝试直接下载PDF
+            arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            response = requests.get(arxiv_pdf_url, timeout=15)
+            response.raise_for_status()
+            
+            if response.content[:4] == b'%PDF':
+                pdf_bytes = response.content
+            else:
+                return "下载的PDF文件无效"
+        
+        # 保存PDF到downloads文件夹
+        if pdf_bytes:
+            try:
+                downloads_dir = 'downloads'
+                os.makedirs(downloads_dir, exist_ok=True)
+                
+                # 生成安全的文件名
+                safe_filename = re.sub(r'[^\w\s-]', '', arxiv_id).strip()
+                safe_filename = re.sub(r'[-\s]+', '_', safe_filename)
+                pdf_filename = os.path.join(downloads_dir, f"{safe_filename}.pdf")
+                
+                # 如果文件已存在，添加时间戳
+                if os.path.exists(pdf_filename):
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    pdf_filename = os.path.join(downloads_dir, f"{safe_filename}_{timestamp}.pdf")
+                
+                with open(pdf_filename, 'wb') as f:
+                    f.write(pdf_bytes)
+                logging.info(f"PDF文件已保存到: {pdf_filename}")
+            except Exception as e:
+                logging.warning(f"保存PDF文件失败: {str(e)}")
+        
+        # 提取文本
+        if pdf_bytes:
+            pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            full_text = ""
+            for page_num in range(min(3, len(pdf_doc))):  # 只提取前3页
+                page = pdf_doc[page_num]
+                full_text += page.get_text()
+            pdf_doc.close()
+            
+            # 限制长度
+            return full_text[:5000] if len(full_text) > 5000 else full_text
+        else:
+            return "无法获取PDF内容"
+    except Exception as e:
+        return f"处理arXiv论文失败: {str(e)}"
+
+
+# 创建工具对象引用（保持向后兼容）
+fetch_webpage_tool = fetch_webpage_content
+
+
 def create_relevance_analyzer_agent():
-    """创建相关性分析 Agent"""
+    """创建相关性分析 Agent（仅通过邮件内容判断，不使用工具，具有记忆功能）"""
     return Agent(
         role="论文相关性分析专家",
-        goal="基于论文标题和邮件片段信息，准确判断论文是否符合遥操作、力控、灵巧手、机器人动力学和机器学习等研究方向",
-        backstory="你是一位在机器人学、控制理论、遥操作、机器人动力学、力控和机器学习领域拥有丰富研究经验的专家。你能够基于论文标题和邮件中的片段信息，准确判断论文的研究方向是否与目标领域相关。你严格基于提供的信息进行分析，不会虚构或推测论文内容，确保判断的准确性和可靠性。",
+        goal="基于论文标题和邮件片段信息，准确判断论文是否符合遥操作、力控、灵巧手、机器人动力学和机器学习等研究方向。同时能够识别重复论文，避免重复处理。",
+        backstory="你是一位在机器人学、控制理论、遥操作、机器人动力学、力控和机器学习领域拥有丰富研究经验的专家。你能够基于论文标题和邮件中的片段信息，准确判断论文的研究方向是否与目标领域相关。你严格基于提供的信息进行分析，不会虚构或推测论文内容，确保判断的准确性和可靠性。你具有记忆功能，能够记住已经处理过的论文（通过标题和URL识别），如果发现是重复论文，会直接跳过处理。",
         allow_delegation=False,
         verbose=True,
         llm=llm,
@@ -1546,15 +1671,49 @@ def send_agent_status(agent_name, status, task=None, result=None):
             output = result.strip()
         else:
             output = str(result).strip()
+        
+        # 如果任务存在，从任务描述中提取论文标题，用于前端显示
+        if task:
+            task_description = task.description if hasattr(task, 'description') else str(task)
+            target = extract_paper_title_from_task(task_description)
     
     # 调用回调函数
     agent_status_callback(agent_name, status, target, output)
 
 
-def create_relevance_analysis_task(paper):
-    """创建相关性分析任务"""
+def create_relevance_analysis_task(paper, processed_papers=None):
+    """
+    创建相关性分析任务
+    
+    Args:
+        paper: 论文信息字典
+        processed_papers: 已处理的论文列表，格式为 [{'title': ..., 'link': ...}, ...]
+    """
     paper_title = paper.get('title', '')
     paper_snippet = paper.get('snippet', '')
+    paper_link = paper.get('link', '')
+    
+    # 构建已处理论文信息（用于重复检测）
+    processed_info = ""
+    if processed_papers and len(processed_papers) > 0:
+        processed_info = "\n\n## 已处理论文列表（用于重复检测）\n"
+        processed_info += "以下论文已经处理过，如果当前论文与其中任何一篇重复（标题相同或URL相同），应直接输出0并说明是重复论文。\n\n"
+        processed_info += "**重要提示**：在判断重复时，需要考虑以下情况：\n"
+        processed_info += "1. 标题完全相同（忽略大小写）\n"
+        processed_info += "2. 标题内容相同但空格不同（例如：'Title A' 和 'TitleA' 应视为相同）\n"
+        processed_info += "3. URL完全相同\n"
+        processed_info += "4. 标题高度相似（核心词汇相同，仅格式略有不同）\n"
+        processed_info += "5. 比较时应该去除空格后对比，或者比较核心词汇是否一致\n\n"
+        for i, proc_paper in enumerate(processed_papers[-20:], 1):  # 只显示最近20篇，避免过长
+            proc_title = proc_paper.get('title', '')[:80]  # 限制长度
+            proc_link = proc_paper.get('link', '')[:80]
+            # 同时显示规范化后的标题（去除空格）用于对比
+            proc_title_normalized = ''.join(proc_title.split())  # 去除所有空格
+            processed_info += f"{i}. 标题：{proc_title}\n"
+            processed_info += f"   标题（无空格）：{proc_title_normalized}\n"
+            processed_info += f"   链接：{proc_link}\n\n"
+        if len(processed_papers) > 20:
+            processed_info += f"（共{len(processed_papers)}篇已处理论文，仅显示最近20篇）\n\n"
     
     return Task(
         description=(
@@ -1567,6 +1726,7 @@ def create_relevance_analysis_task(paper):
             f"- 机器学习（Machine Learning）\n\n"
             f"## 输入信息\n"
             f"**论文标题**：{paper_title}\n\n"
+            f"**论文链接**：{paper_link}\n\n"
             f"**邮件片段信息**：\n```\n{paper_snippet}\n```\n\n"
             f"## 研究方向定义\n"
             f"### 方向1：遥操作（Teleoperation）\n"
@@ -1585,67 +1745,73 @@ def create_relevance_analysis_task(paper):
             f"涉及强化学习、深度强化学习、模仿学习、演示学习、学习控制、自适应控制、神经网络控制、深度学习控制、模型学习、动力学学习、数据驱动控制、基于学习的控制、策略学习、技能学习、端到端学习、迁移学习、元学习等相关研究。\n"
             f"关键特征：机器学习方法应用于机器人控制、强化学习控制、学习策略、数据驱动方法、基于学习的控制算法。\n"
             f"**注意**：仅当机器学习方法应用于遥操作、力控、灵巧手、机器人动力学等机器人控制领域时，才视为符合方向。纯机器学习理论研究或应用于其他领域（如计算机视觉、自然语言处理等）的论文不符合此方向。\n\n"
+            f"{processed_info}"
             f"## 判断标准\n"
             f"### 输出1（符合方向）的条件\n"
             f"- 论文标题或邮件片段信息明确表明论文研究内容与上述任一方向相关\n"
             f"- 论文涉及的技术、方法、应用场景与上述方向的核心特征匹配\n"
             f"- 论文的研究目标、技术路线或应用领域与上述方向高度相关\n"
-            f"- **重要**：判断必须基于提供的标题和片段信息，不能虚构或推测论文内容\n\n"
+            f"- **重要**：判断必须基于提供的标题和片段信息，不能虚构或推测论文内容\n"
+            f"- **重要**：当前论文不是重复论文（标题和URL与已处理论文列表中的任何一篇都不相同）\n\n"
             f"### 输出0（不符合方向）的条件\n"
             f"- 论文标题和邮件片段信息无法明确判断与上述方向相关\n"
             f"- 论文研究内容明显属于其他领域（如纯计算机视觉、自动驾驶、导航等）\n"
             f"- 论文虽然涉及机器人或机器学习，但研究重点不在上述五个方向\n"
-            f"- 信息不足，无法准确判断论文研究方向\n\n"
+            f"- 信息不足，无法准确判断论文研究方向\n"
+            f"- **重复论文**：当前论文的标题或URL与已处理论文列表中的任何一篇相同或高度相似（视为重复论文，直接输出0）\n"
+            f"  - 判断重复时，需要比较标题的核心内容，即使空格不同也应视为相同（例如：'Title A' 和 'TitleA'）\n"
+            f"  - 比较时应该去除空格后对比，或者比较核心词汇是否一致\n"
+            f"  - 如果标题的核心内容相同，即使格式略有不同（如空格、大小写），也应视为重复论文\n\n"
             f"## 分析要求\n"
             f"1. **严格基于提供信息**：只能基于论文标题和邮件片段信息进行分析，不能虚构、推测或添加未提供的信息\n"
             f"2. **准确理解研究方向**：准确理解五个研究方向的核心特征和关键要素\n"
             f"3. **客观判断**：基于客观证据进行判断，避免主观臆测\n"
-            f"4. **明确输出**：明确输出1或0，并说明判断依据\n\n"
+            f"4. **明确输出**：明确输出相关性判断、论文名称和网址\n"
+            f"5. **标题规范化**：输出论文名称时，确保标题格式规范（单词之间用单个空格分隔，去除多余空格）\n\n"
             f"## 输出格式（严格遵循）\n"
             f"```\n"
             f"相关性判断：1\n"
+            f"论文名称：[论文的完整标题]\n"
+            f"论文网址：[论文的完整URL]\n"
             f"判断依据：[简要说明论文与哪个方向相关，以及判断的关键依据]\n"
             f"```\n"
             f"或\n"
             f"```\n"
             f"相关性判断：0\n"
+            f"论文名称：[论文的完整标题]\n"
+            f"论文网址：[论文的完整URL]\n"
             f"判断依据：[简要说明为什么不符合上述方向]\n"
             f"```\n\n"
             f"## 注意事项\n"
             f"- 必须基于提供的标题和片段信息进行判断，不能虚构论文内容\n"
             f"- 如果信息不足，应输出0并说明信息不足\n"
             f"- 判断依据应具体、明确，指出与哪个方向相关以及关键特征\n"
+            f"- 论文名称和网址必须准确输出，即使判断为不相关也要输出\n"
             f"- 避免过度解读或推测，确保判断的准确性"
         ),
         agent=create_relevance_analyzer_agent(),
-        expected_output="首先输出相关性判断（1表示符合方向，0表示不符合），然后输出判断依据"
+        expected_output="首先输出相关性判断（1表示符合方向，0表示不符合），然后输出论文名称、论文网址和判断依据"
     )
 
 
 def create_abstract_validator_agent():
-    """创建摘要验证 Agent"""
-    return Agent(
-        role="摘要真实性检查专家",
-        goal="检查提取的摘要内容是否真实可靠，判断是否为AI模型虚构生成的内容",
-        backstory="你是一位专业的学术内容验证专家。你擅长识别AI生成的内容和真实提取的内容。你能够通过分析文本特征、关键词、逻辑连贯性等来判断内容是否来自原文提取，还是AI模型虚构生成的。你严格遵循验证标准，确保只有真实可靠的摘要才能通过验证。",
-        allow_delegation=False,
-        verbose=True,
-        llm=llm,
-        max_iter=2,
-        max_execution_time=300
-    )
-
+    """创建摘要验证 Agent（已弃用，保留用于兼容性）"""
+    return create_abstract_validation_and_cleaning_agent()
 
 def create_abstract_cleaner_agent():
-    """创建摘要清洗 Agent"""
+    """创建摘要清洗 Agent（已弃用，保留用于兼容性）"""
+    return create_abstract_validation_and_cleaning_agent()
+
+def create_abstract_validation_and_cleaning_agent():
+    """创建摘要验证与清洗 Agent（合并功能）"""
     return Agent(
-        role="摘要清洗专家",
-        goal="清洗摘要内容，剔除无关符号、引用标记、图表引用和无意义的格式字符，保持摘要的完整性和可读性",
-        backstory="你是一位专业的文本清洗专家。你擅长识别和清理学术文本中的无关内容，包括引用文献标记（如[1]、[2-5]）、图表引用（如图1、Table 2）、无意义的换行符、多余的空格等。你能够在不改变原文意思的前提下，清理这些干扰内容，使文本更加简洁易读。",
+        role="摘要验证与清洗专家",
+        goal="验证摘要真实性并清洗格式，确保摘要内容真实可靠且格式规范",
+        backstory="你是一位专业的学术内容验证与清洗专家。你具备双重能力：首先，你擅长识别AI生成的内容和真实提取的内容，能够通过分析文本特征、关键词、逻辑连贯性等来判断内容是否来自原文提取；其次，你擅长识别和清理学术文本中的无关内容，包括引用文献标记、图表引用、无意义的格式字符等。你能够在不改变原文意思的前提下，先验证内容真实性，然后清理干扰内容，使文本更加简洁易读。",
         allow_delegation=False,
         verbose=True,
         llm=llm,
-        max_iter=2,
+        max_iter=3,  # 合并任务可能需要更多迭代
         max_execution_time=300
     )
 
@@ -1678,31 +1844,88 @@ def create_reviewer_agent():
     )
 
 
-def create_web_abstract_extractor_agent():
-    """创建网页摘要提取 Agent"""
+def create_abstract_extractor_agent():
+    """创建摘要提取 Agent（合并PDF和网页提取功能，带工具支持）"""
     return Agent(
-        role="网页摘要提取专家",
-        goal="从学术论文网页的HTML内容中准确提取摘要部分，排除导航、广告、正文等其他内容。对于摘要与引言融合的情况，可以将引言开篇部分一起提取。严禁生成、创造或修改摘要，只能提取现有内容。",
-        backstory="你是一位专业的学术论文网页处理专家。你擅长从复杂的HTML网页中准确识别和提取摘要部分。你能够识别各种网页结构中的摘要内容，包括不同网站的设计风格，准确提取摘要并排除导航栏、广告、作者信息、正文等其他无关内容。你特别了解某些学术会议论文的格式特点：摘要内容可能会融入引言的开篇部分，如果识别到摘要直接连接到引言且引言开篇在逻辑上延续了摘要内容，你会将摘要和引言开篇部分（通常1-2段）一起提取。你严格遵守一个原则：只能提取网页中现有的摘要内容，绝对不能自己生成、创造、改写或总结摘要。如果网页中没有明确的摘要，你会如实报告提取失败。你只输出摘要内容，不包含任何其他信息。",
+        role="论文摘要提取专家",
+        goal="从论文URL获取内容（PDF或网页），然后准确提取摘要部分。对于摘要与引言融合的情况，可以将引言开篇部分一起提取。严禁生成、创造或修改摘要，只能提取现有内容。",
+        backstory="你是一位专业的学术论文摘要提取专家。你能够根据论文URL，使用工具下载PDF或爬取网页内容，然后从获取的内容中准确识别和提取摘要部分。你擅长处理PDF文档和网页两种格式：对于PDF，你能识别'Abstract'、'摘要'等标记；对于网页，你能识别各种网页结构中的摘要内容。你特别了解某些学术会议论文的格式特点：摘要内容可能会融入引言的开篇部分，如果识别到摘要直接连接到引言且引言开篇在逻辑上延续了摘要内容，你会将摘要和引言开篇部分（通常1-2段）一起提取。你严格遵守一个原则：只能提取现有内容中的摘要，绝对不能自己生成、创造、改写或总结摘要。如果内容中没有明确的摘要，你会如实报告提取失败。",
         allow_delegation=False,
         verbose=True,
         llm=llm,
-        max_iter=2,
-        max_execution_time=300
+        max_iter=3,  # 允许使用工具获取内容
+        max_execution_time=300,
+        tools=[fetch_webpage_tool, arxiv_download_tool]  # 添加工具
     )
 
 
+# 兼容性函数（保留用于get_full_abstract等旧代码）
 def create_pdf_processor_agent():
-    """创建PDF处理 Agent"""
-    return Agent(
-        role="PDF摘要提取专家",
-        goal="从PDF文档的文本内容中准确提取摘要部分，排除正文内容。对于摘要与引言融合的情况，可以将引言开篇部分一起提取。严禁生成、创造或修改摘要，只能提取现有内容。",
-        backstory="你是一位专业的学术论文PDF处理专家。你擅长从PDF提取的文本中准确识别和提取摘要部分。你能够识别'Abstract'、'摘要'等标记，准确提取摘要内容，并排除Introduction、正文等其他部分。你特别了解某些学术会议论文的格式特点：摘要内容可能会融入引言的开篇部分，如果识别到摘要直接连接到引言且引言开篇在逻辑上延续了摘要内容，你会将摘要和引言开篇部分（通常1-2段）一起提取。你严格遵守一个原则：只能提取PDF文本中现有的摘要内容，绝对不能自己生成、创造、改写或总结摘要。如果PDF文本中没有明确的摘要，你会如实报告提取失败。你只输出摘要内容，不包含任何正文。",
-        allow_delegation=False,
-        verbose=True,
-        llm=llm,
-        max_iter=2,
-        max_execution_time=300
+    """创建PDF处理 Agent（已弃用，保留用于兼容性）"""
+    return create_abstract_extractor_agent()
+
+def create_web_abstract_extractor_agent():
+    """创建网页摘要提取 Agent（已弃用，保留用于兼容性）"""
+    return create_abstract_extractor_agent()
+
+
+def create_abstract_extraction_task(paper_title, paper_url):
+    """创建摘要提取任务（合并PDF和网页提取，使用工具获取内容）"""
+    return Task(
+        description=(
+            f"## 任务目标\n"
+            f"从论文URL获取内容（PDF或网页），然后准确提取摘要部分，仅提取现有内容，严禁生成或修改。\n\n"
+            f"## 输入信息\n"
+            f"**论文标题**：{paper_title}\n\n"
+            f"**论文URL**：{paper_url}\n\n"
+            f"## 执行步骤\n"
+            f"### 步骤1：获取论文内容\n"
+            f"使用工具从论文URL获取内容：\n"
+            f"- **优先使用arXiv论文下载工具**：如果URL包含'arxiv.org'，使用此工具下载PDF并提取文本（前3页，通常包含摘要）\n"
+            f"- **备选方案网页内容获取工具**：如果不是arXiv论文或arXiv工具失败，使用此工具获取网页内容\n"
+            f"- 获取的内容将用于后续的摘要提取\n\n"
+            f"### 步骤2：判断提取可行性\n"
+            f"- **输出1的条件**：获取的内容中明确存在摘要内容（通常以'Abstract'、'摘要'等标记开始，或论文开头的描述性段落）\n"
+            f"- **输出0的条件**：内容中没有明确的摘要部分、内容不完整、获取失败或无法识别摘要\n"
+            f"- **判断标准**：仅在内容中明确存在摘要内容时输出1，禁止根据标题或其他信息推测\n\n"
+            f"### 步骤3：提取摘要内容（仅在步骤2输出1时执行）\n"
+            f"- **识别范围**：摘要通常在Introduction、Keywords、Key Words或正文开始之前结束\n"
+            f"- **特殊处理：摘要与引言融合**：\n"
+            f"  - 某些学术会议论文中，摘要可能融入引言的开篇部分\n"
+            f"  - 如果摘要直接连接到引言（无明显分隔标记，或引言开篇延续摘要内容），可将摘要和引言开篇部分（通常1-2段）一起提取\n"
+            f"  - **判断标准**：引言开篇在逻辑上延续摘要内容且无明显章节分隔时，可视为摘要的一部分；\n"
+            f"    当引言开始讨论具体研究背景、相关工作等详细内容时，应停止提取\n"
+            f"- **提取要求**：\n"
+            f"  - 完全按照原文逐字提取，禁止任何修改\n"
+            f"  - 仅输出摘要内容（如与引言融合，则包含引言开篇部分）\n"
+            f"  - 禁止包含：论文标题、作者信息、Keywords、正文详细内容、参考文献、导航栏、广告等\n"
+            f"  - 保持摘要的完整性和连贯性（必须是原文内容）\n\n"
+            f"### 步骤4：输出结果（仅在步骤2输出0时执行）\n"
+            f"- 输出0，不输出任何摘要内容，不添加任何说明\n\n"
+            f"## 核心约束（必须严格遵守）\n"
+            f"1. **严格禁止生成内容**：只能提取内容中已存在的摘要，禁止生成、创造、改写、总结或补充任何内容\n"
+            f"2. **严格禁止修改内容**：提取的摘要必须与原文完全一致，禁止任何修改、补充、改写或重新表述\n"
+            f"3. **严格禁止推测**：如果内容中没有明确的摘要部分，必须输出0，禁止根据标题或其他信息推测\n"
+            f"4. **逐字提取原则**：提取的内容必须与原文措辞和表达方式完全一致\n"
+            f"5. **内容不完整处理**：如果内容不完整、无法识别摘要部分或获取失败，必须输出0\n"
+            f"6. **禁止添加元信息**：输出中禁止包含任何Note、说明、注释或解释性文字\n\n"
+            f"## 输出格式（严格遵循）\n"
+            f"```\n"
+            f"提取结果：1\n"
+            f"摘要内容：[提取的摘要文本]\n"
+            f"```\n"
+            f"或\n"
+            f"```\n"
+            f"提取结果：0\n"
+            f"摘要内容：\n"
+            f"```\n\n"
+            f"## 注意事项\n"
+            f"- 严格按照上述格式输出，先输出提取结果（1或0），然后根据结果决定是否输出摘要内容\n"
+            f"- 只能提取现有内容，严禁生成、创造或修改摘要\n"
+            f"- 如果无法提取，必须输出0，禁止添加任何说明或注释"
+        ),
+        agent=create_abstract_extractor_agent(),
+        expected_output="首先输出提取结果（1表示成功，0表示失败），如果成功则输出从原文中逐字提取的摘要内容（严禁生成或修改，禁止添加任何说明或注释）"
     )
 
 
@@ -1837,115 +2060,111 @@ def create_web_abstract_extraction_task(html_text, paper_title, url=""):
 
 
 def create_abstract_validation_task(paper, abstract_text, source_type="网页"):
-    """创建摘要验证任务"""
+    """创建摘要验证任务（已弃用，保留用于兼容性）"""
+    return create_abstract_validation_and_cleaning_task(paper, abstract_text, source_type)
+
+def create_abstract_cleaning_task(abstract_text):
+    """创建摘要清洗任务（已弃用，保留用于兼容性）"""
+    # 这个函数需要paper对象，但为了兼容性，我们创建一个临时的paper对象
+    paper = {'title': ''}
+    return create_abstract_validation_and_cleaning_task(paper, abstract_text, "网页")
+
+def create_abstract_validation_and_cleaning_task(paper, abstract_text, source_type="网页"):
+    """创建摘要验证与清洗任务（合并功能）"""
     return Task(
         description=(
             f"## 任务目标\n"
-            f"检查提取的摘要内容是否真实可靠，判断是否为AI模型虚构生成的内容。\n\n"
+            f"首先验证摘要内容的真实性，如果验证通过，则清洗摘要格式。这是一个两步任务：先验证，后清洗。\n\n"
             f"## 输入信息\n"
             f"**论文标题**：{paper['title']}\n\n"
             f"**提取的摘要内容**：\n```\n{abstract_text}\n```\n\n"
             f"**来源类型**：{source_type}\n\n"
-            f"## 验证维度\n"
-            f"### 维度1：生成标志检测\n"
+            f"## 步骤1：验证摘要真实性\n"
+            f"### 验证维度\n"
+            f"#### 维度1：生成标志检测\n"
             f"检查摘要中是否包含明显的AI生成标志：\n"
             f"- 关键词标志：'simulated'、'generated'、'based on'、'not provided'、'assumed'、'presumed'、'inferred'等\n"
             f"- 元信息标志：'Note:'、'注意'、'说明'、'备注'等解释性文字\n"
             f"- 不确定性表述：'推测'、'假设'、'推断'、'可能'等不确定性的表述\n\n"
-            f"### 维度2：内容相关性验证\n"
+            f"#### 维度2：内容相关性验证\n"
             f"检查摘要内容与论文标题的相关性：\n"
             f"- 摘要是否明确提到标题中的关键概念和主题\n"
             f"- 摘要内容是否与标题主题高度一致\n"
             f"- 是否存在明显的主题偏离或无关内容\n\n"
-            f"### 维度3：文本特征分析\n"
+            f"#### 维度3：文本特征分析\n"
             f"检查摘要是否具有真实学术摘要的特征：\n"
             f"- 是否包含具体的技术细节、方法、结果、贡献等实质性内容\n"
             f"- 是否过于笼统、模糊或缺乏具体信息\n"
             f"- 文本特征是否表明来自原文逐字提取（而非重新表述）\n\n"
-            f"### 维度4：逻辑连贯性评估\n"
+            f"#### 维度4：逻辑连贯性评估\n"
             f"检查摘要的逻辑连贯性：\n"
             f"- 句子之间是否存在清晰的逻辑关系\n"
             f"- 是否包含完整的学术摘要结构（研究背景、方法、结果、结论等）\n"
             f"- 段落结构是否合理，信息流是否顺畅\n\n"
-            f"## 判断标准\n"
-            f"- **输出1（真实可靠）**：摘要内容来自原文提取，通过所有验证维度，无明显AI生成标志。\n"
-            f"- **输出0（可能是虚构）**：摘要内容可能是AI虚构生成，或包含明显的生成标志，或未通过验证维度。\n\n"
-            f"## 输出格式（严格遵循）\n"
-            f"```\n"
-            f"验证结果：1\n"
-            f"验证说明：[简要说明验证依据，包括各维度的检查结果]\n"
-            f"```\n"
-            f"或\n"
-            f"```\n"
-            f"验证结果：0\n"
-            f"验证说明：[详细说明检测到的虚构标志和未通过的验证维度]\n"
-            f"```\n\n"
-            f"## 注意事项\n"
-            f"- 必须基于客观证据进行判断，避免主观臆测。\n"
-            f"- 验证说明应具体、明确，指出具体的检测依据。\n"
-            f"- 如果存在任何可疑标志，应输出0并详细说明。"
-        ),
-        agent=create_abstract_validator_agent(),
-        expected_output="首先输出验证结果（1表示真实可靠，0表示可能是虚构的），然后输出详细的验证说明"
-    )
-
-
-def create_abstract_cleaning_task(abstract_text):
-    """创建摘要清洗任务"""
-    return Task(
-        description=(
-            f"## 任务目标\n"
-            f"清洗摘要内容，剔除无关符号、引用标记和格式字符，保持文本的完整性和可读性。\n\n"
-            f"## 输入信息\n"
-            f"**原始摘要内容**：\n```\n{abstract_text}\n```\n\n"
-            f"## 清洗规则\n"
-            f"### 规则1：删除引用文献标记\n"
+            f"### 验证判断标准\n"
+            f"- **验证结果=1（真实可靠）**：摘要内容来自原文提取，通过所有验证维度，无明显AI生成标志。\n"
+            f"- **验证结果=0（可能是虚构）**：摘要内容可能是AI虚构生成，或包含明显的生成标志，或未通过验证维度。\n\n"
+            f"## 步骤2：清洗摘要格式（仅在验证结果=1时执行）\n"
+            f"如果验证通过（验证结果=1），则对摘要进行格式清洗：\n\n"
+            f"### 清洗规则\n"
+            f"#### 规则1：删除引用文献标记\n"
             f"- 删除所有引用标记，包括但不限于：\n"
             f"  - 单引用：[1]、[2]、[3]等\n"
             f"  - 范围引用：[1-5]、[2-10]等\n"
             f"  - 多引用：[1,2,3]、[1, 2, 3]等\n"
             f"  - 混合引用：[1,3-5,7]等\n\n"
-            f"### 规则2：删除图表引用\n"
+            f"#### 规则2：删除图表引用\n"
             f"- 删除所有图表引用，包括但不限于：\n"
             f"  - 中文格式：'图1'、'图2'、'表1'、'表2'等\n"
             f"  - 英文格式：'Figure 1'、'Fig. 1'、'Table 2'、'Tab. 2'等\n"
             f"  - 带括号格式：'(图1)'、'(Figure 1)'等\n\n"
-            f"### 规则3：清理无意义的换行\n"
+            f"#### 规则3：清理无意义的换行\n"
             f"- 将多个连续的空行（≥2个）合并为单个空行\n"
             f"- 删除段落中间不必要的换行（保持段落内句子连续）\n"
             f"- 保留段落之间的合理分隔（单个空行）\n\n"
-            f"### 规则4：清理多余空格\n"
+            f"#### 规则4：清理多余空格\n"
             f"- 删除行首和行尾的所有空格\n"
             f"- 将多个连续空格（≥2个）合并为单个空格\n"
             f"- 保留句子之间的单个空格\n\n"
-            f"### 规则5：保持内容完整性\n"
+            f"#### 规则5：保持内容完整性\n"
             f"- 仅删除标记和格式字符，禁止删除或修改实际的文本内容\n"
             f"- 禁止修改单词、句子或段落的实际内容\n"
             f"- 禁止添加、删除或重新组织文本内容\n\n"
-            f"### 规则6：保持逻辑连贯性\n"
+            f"#### 规则6：保持逻辑连贯性\n"
             f"- 确保清洗后的文本逻辑连贯，句子完整\n"
             f"- 保持原文的段落结构和句子顺序\n"
             f"- 确保删除引用标记后，句子仍然语法正确\n\n"
-            f"## 输出要求\n"
-            f"- 直接输出清洗后的摘要内容，不添加任何说明或注释\n"
-            f"- 保持原文的段落结构和句子顺序\n"
-            f"- 输出应为纯文本，无额外的格式标记\n\n"
-            f"## 示例\n"
-            f"**输入**：This paper presents a novel method [1,2]. As shown in Figure 1, the results are promising.\n\n"
-            f"**输出**：This paper presents a novel method. As shown in, the results are promising.\n\n"
-            f"（注意：删除引用标记和图表引用，但保持句子结构）"
+            f"## 输出格式（严格遵循）\n"
+            f"### 如果验证通过（验证结果=1）：\n"
+            f"```\n"
+            f"验证结果：1\n"
+            f"验证说明：[简要说明验证依据，包括各维度的检查结果]\n"
+            f"清洗后的摘要：\n[清洗后的摘要内容，已删除引用标记、图表引用和无意义的格式字符]\n"
+            f"```\n\n"
+            f"### 如果验证失败（验证结果=0）：\n"
+            f"```\n"
+            f"验证结果：0\n"
+            f"验证说明：[详细说明检测到的虚构标志和未通过的验证维度]\n"
+            f"清洗后的摘要：\n"
+            f"```\n\n"
+            f"## 注意事项\n"
+            f"- 必须基于客观证据进行判断，避免主观臆测。\n"
+            f"- 验证说明应具体、明确，指出具体的检测依据。\n"
+            f"- 如果验证失败，不进行清洗，直接输出验证结果和说明。\n"
+            f"- 如果验证通过，必须输出清洗后的摘要内容。\n"
+            f"- 清洗后的摘要应保持原文的段落结构和句子顺序。"
         ),
-        agent=create_abstract_cleaner_agent(),
-        expected_output="清洗后的摘要内容，已删除引用标记、图表引用和无意义的格式字符，保持文本完整性和逻辑连贯性"
+        agent=create_abstract_validation_and_cleaning_agent(),
+        expected_output="首先输出验证结果（1表示真实可靠，0表示可能是虚构的），然后输出验证说明，如果验证通过则输出清洗后的摘要内容"
     )
 
 
 def create_translation_task(paper, abstract_text):
-    """创建翻译任务"""
+    """创建翻译任务（输出包含中英文双语）"""
     return Task(
         description=(
             f"## 任务目标\n"
-            f"将英文论文摘要准确、专业地翻译成中文，确保专业术语准确性和技术描述完整性。\n\n"
+            f"将英文论文摘要准确、专业地翻译成中文，确保专业术语准确性和技术描述完整性。输出时需同时包含中文翻译和英文原文。\n\n"
             f"## 输入信息\n"
             f"**论文标题**：{paper['title']}\n\n"
             f"**论文摘要（英文原文）**：\n```\n{abstract_text}\n```\n\n"
@@ -1966,25 +2185,33 @@ def create_translation_task(paper, abstract_text):
             f"- 如果遇到不确定的术语，提供最可能的专业翻译\n"
             f"- 优先考虑该领域的常用译法和标准术语\n"
             f"- 避免直译或字面翻译，注重专业表达的准确性\n\n"
+            f"## 输出格式（严格遵循）\n"
+            f"```\n"
+            f"中文翻译：\n[翻译后的中文摘要内容]\n\n"
+            f"英文原文：\n[输入的英文原文摘要内容]\n"
+            f"```\n\n"
             f"## 输出要求\n"
-            f"- 直接输出翻译后的中文内容，不添加任何说明或注释\n"
-            f"- 保持原文的结构和逻辑\n"
-            f"- 确保翻译流畅、自然，符合中文表达习惯"
+            f"- 必须同时输出中文翻译和英文原文\n"
+            f"- 中文翻译应保持原文的结构和逻辑\n"
+            f"- 英文原文必须与输入内容完全一致，不得修改\n"
+            f"- 确保翻译流畅、自然，符合中文表达习惯\n"
+            f"- 不添加任何额外的说明或注释"
         ),
         agent=create_translator_agent(),
-        expected_output="翻译后的中文摘要内容，保持原文的结构和逻辑，专业术语准确，技术描述完整"
+        expected_output="输出包含两部分：1) 中文翻译（翻译后的中文摘要内容）；2) 英文原文（与输入完全一致的英文摘要内容）"
     )
 
 
-def create_review_task(paper, translated_content):
-    """创建评审任务"""
+def create_review_task(paper, translated_content, original_english_abstract=""):
+    """创建评审任务（支持中英文双语评审）"""
     return Task(
         description=(
             f"## 任务目标\n"
-            f"对论文进行专业评审，生成结构化总结并给出4个维度的分项评分（每个维度0.0-1.0分）。\n\n"
+            f"对论文进行专业评审，生成结构化总结并给出4个维度的分项评分（每个维度0.0-1.0分）。评审时可参考中英文双语内容，以提高评审准确性。\n\n"
             f"## 输入信息\n"
             f"**论文标题（英文）**：{paper['title']}\n\n"
             f"**论文内容（已翻译为中文）**：\n```\n{translated_content}\n```\n\n"
+            f"{f'**论文摘要（英文原文）**：\n```\n{original_english_abstract}\n```\n\n' if original_english_abstract else ''}"
             f"## 评审维度\n"
             f"### 维度1：创新性（0.0-1.0分）\n"
             f"评估论文的创新程度：\n"
@@ -2025,6 +2252,11 @@ def create_review_task(paper, translated_content):
             f"4. **评分理由**：必须在JSON中包含'评分理由'字段，简要说明评分依据\n"
             f"5. **禁止重复**：不要重复说明评分规则，不要多次输出评分详情\n"
             f"6. **直接输出**：直接给出评审结果，不要添加额外的说明或解释\n\n"
+            f"## 评审建议\n"
+            f"- 如果提供了英文原文，建议同时参考中英文双语内容进行评审，以提高评审准确性\n"
+            f"- 英文原文可以帮助理解专业术语的准确含义和技术细节\n"
+            f"- 中文翻译可以帮助快速理解论文的整体内容\n"
+            f"- 当翻译可能存在歧义时，优先参考英文原文\n\n"
             f"## 注意事项\n"
             f"- 评分应客观、公正，基于论文的实际内容进行评估\n"
             f"- 各维度的评分应相互独立，避免相互影响\n"
@@ -2038,7 +2270,7 @@ def create_review_task(paper, translated_content):
     )
 
 
-def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
+def process_paper_with_crewai(paper, full_abstract, source_type="网页", on_paper_updated=None):
     """
     使用 CrewAI 框架处理论文：验证 + 翻译 + 评审
     返回处理结果字典
@@ -2047,58 +2279,70 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
         paper: 论文信息字典
         full_abstract: 完整摘要文本
         source_type: 摘要来源类型（"PDF"或"网页"）
+        on_paper_updated: 论文更新回调函数（可选）
     """
+    paper_id = paper.get('_paper_id', '')
+    
     try:
-        # 步骤0: 验证摘要真实性
-        print("  [步骤0/4] 验证摘要真实性...")
-        validation_task = create_abstract_validation_task(paper, full_abstract, source_type)
-        validation_agent = create_abstract_validator_agent()
+        # 更新状态：验证与清洗中
+        if on_paper_updated and paper_id:
+            on_paper_updated(paper_id, {
+                'status': 'validating_cleaning',
+                'status_text': '验证与清洗摘要中...',
+                'title': paper.get('title', '')
+            })
+        
+        # 步骤0: 验证与清洗摘要（合并步骤）
+        print("  [步骤0/3] 验证与清洗摘要中...")
+        validation_cleaning_task = create_abstract_validation_and_cleaning_task(paper, full_abstract, source_type)
+        validation_cleaning_agent = create_abstract_validation_and_cleaning_agent()
         
         # 发送agent工作开始状态
-        send_agent_status("摘要真实性检查专家", "start", task=validation_task)
+        send_agent_status("摘要验证与清洗专家", "start", task=validation_cleaning_task)
         
         with capture_crewai_output():
-            validation_crew = Crew(
-                agents=[validation_agent],
-                tasks=[validation_task],
+            validation_cleaning_crew = Crew(
+                agents=[validation_cleaning_agent],
+                tasks=[validation_cleaning_task],
                 verbose=True,
                 share_crew=False
             )
-            validation_result = validation_crew.kickoff()
+            validation_cleaning_result = validation_cleaning_crew.kickoff()
         
         # 发送agent工作结束状态
-        send_agent_status("摘要真实性检查专家", "end", result=validation_result)
+        send_agent_status("摘要验证与清洗专家", "end", result=validation_cleaning_result)
         
         # 记录 Agent 的输入和输出
         if crewai_log_callback:
-            log_agent_io("摘要真实性检查专家", validation_task, validation_result, crewai_log_callback)
+            log_agent_io("摘要验证与清洗专家", validation_cleaning_task, validation_cleaning_result, crewai_log_callback)
         
-        validation_output = validation_result.raw.strip()
+        validation_cleaning_output = validation_cleaning_result.raw.strip()
         
-        # 解析验证结果
+        # 解析验证与清洗结果
         validation_result_code = None
         validation_explanation = ""
+        cleaned_abstract = full_abstract  # 默认使用原始摘要
         
         # 查找"验证结果："后面的数字
-        result_match = re.search(r'验证结果[：:]\s*([01])', validation_output, re.I)
+        result_match = re.search(r'验证结果[：:]\s*([01])', validation_cleaning_output, re.I)
         if result_match:
             validation_result_code = int(result_match.group(1))
         
         # 如果没找到，尝试查找独立的0或1
         if validation_result_code is None:
-            first_line_match = re.match(r'^\s*([01])\s*$', validation_output.split('\n')[0] if validation_output else '')
+            first_line_match = re.match(r'^\s*([01])\s*$', validation_cleaning_output.split('\n')[0] if validation_cleaning_output else '')
             if first_line_match:
                 validation_result_code = int(first_line_match.group(1))
         
         # 如果还是没找到，检查是否包含"验证结果：0"或"验证结果：1"
         if validation_result_code is None:
-            if re.search(r'验证结果[：:]\s*0|结果[：:]\s*0|^0\s*$', validation_output, re.I | re.M):
+            if re.search(r'验证结果[：:]\s*0|结果[：:]\s*0|^0\s*$', validation_cleaning_output, re.I | re.M):
                 validation_result_code = 0
-            elif re.search(r'验证结果[：:]\s*1|结果[：:]\s*1|^1\s*$', validation_output, re.I | re.M):
+            elif re.search(r'验证结果[：:]\s*1|结果[：:]\s*1|^1\s*$', validation_cleaning_output, re.I | re.M):
                 validation_result_code = 1
         
         # 提取验证说明
-        explanation_match = re.search(r'验证说明[：:]\s*(.+?)(?:\n\n|$)', validation_output, re.DOTALL | re.I)
+        explanation_match = re.search(r'验证说明[：:]\s*(.+?)(?:\n清洗后的摘要|$)', validation_cleaning_output, re.DOTALL | re.I)
         if explanation_match:
             validation_explanation = explanation_match.group(1).strip()
         
@@ -2112,13 +2356,30 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
                 'score': 0.0,
                 'score_details': {},
                 'is_high_value': False,
-                'full_abstract': full_abstract
+                'full_abstract': full_abstract,
+                'original_english_abstract': full_abstract  # 保存原始英文摘要
             }
         
-        # 如果验证结果为1（真实可靠），继续处理
+        # 如果验证结果为1（真实可靠），提取清洗后的摘要
         if validation_result_code == 1:
             print(f"    ✓ 摘要验证通过：内容真实可靠")
             debug_logger.log(f"摘要验证通过：{validation_explanation}", "SUCCESS")
+            
+            # 提取清洗后的摘要
+            cleaned_match = re.search(r'清洗后的摘要[：:]\s*(.+?)(?:\n\n|$)', validation_cleaning_output, re.DOTALL | re.I)
+            if cleaned_match:
+                cleaned_abstract = cleaned_match.group(1).strip()
+                # 如果清洗后的摘要太短，使用原始摘要
+                if len(cleaned_abstract) < 50:
+                    print(f"    ⚠ 清洗后的摘要太短，使用原始摘要")
+                    cleaned_abstract = full_abstract
+                else:
+                    print(f"    ✓ 摘要清洗完成 ({len(cleaned_abstract)} 字符)")
+                    debug_logger.log(f"摘要清洗完成，长度: {len(cleaned_abstract)} 字符", "SUCCESS")
+            else:
+                # 如果没有找到清洗后的摘要，使用原始摘要
+                print(f"    ⚠ 未找到清洗后的摘要，使用原始摘要")
+                cleaned_abstract = full_abstract
         else:
             # 如果无法解析验证结果，使用关键词检测作为备选
             print(f"    ⚠ 无法解析验证结果，使用关键词检测...")
@@ -2140,50 +2401,23 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
                     'score': 0.0,
                     'score_details': {},
                     'is_high_value': False,
-                    'full_abstract': full_abstract
+                    'full_abstract': full_abstract,
+                    'original_english_abstract': full_abstract
                 }
             else:
                 print(f"    ✓ 关键词检测通过：未发现生成标志")
                 debug_logger.log(f"关键词检测通过：未发现生成标志", "INFO")
         
-        # 步骤1: 清洗摘要
-        print("  [步骤1/4] 清洗摘要中...")
-        cleaning_task = create_abstract_cleaning_task(full_abstract)
-        cleaning_agent = create_abstract_cleaner_agent()
+        # 更新状态：翻译中
+        if on_paper_updated and paper_id:
+            on_paper_updated(paper_id, {
+                'status': 'translating',
+                'status_text': '翻译中...',
+                'title': paper.get('title', '')
+            })
         
-        # 发送agent工作开始状态（清洗任务没有论文标题，直接从paper字典获取）
-        if agent_status_callback:
-            agent_status_callback("摘要清洗专家", "start", paper.get('title', ''), None)
-        
-        with capture_crewai_output():
-            cleaning_crew = Crew(
-                agents=[cleaning_agent],
-                tasks=[cleaning_task],
-                verbose=True,
-                share_crew=False
-            )
-            cleaning_result = cleaning_crew.kickoff()
-        
-        # 发送agent工作结束状态
-        send_agent_status("摘要清洗专家", "end", result=cleaning_result)
-        
-        # 记录 Agent 的输入和输出
-        if crewai_log_callback:
-            log_agent_io("摘要清洗专家", cleaning_task, cleaning_result, crewai_log_callback)
-        
-        cleaned_abstract = cleaning_result.raw.strip()
-        
-        # 如果清洗失败，使用原始摘要
-        if not cleaned_abstract or len(cleaned_abstract) < 50:
-            print(f"    ⚠ 摘要清洗结果异常，使用原始摘要")
-            debug_logger.log(f"摘要清洗结果异常，使用原始摘要", "WARNING")
-            cleaned_abstract = full_abstract
-        else:
-            print(f"    ✓ 摘要清洗完成 ({len(cleaned_abstract)} 字符)")
-            debug_logger.log(f"摘要清洗完成，长度: {len(cleaned_abstract)} 字符", "SUCCESS")
-        
-        # 步骤2: 翻译
-        print("  [步骤2/4] 专业翻译中...")
+        # 步骤1: 翻译（输出包含中英文双语）
+        print("  [步骤1/3] 专业翻译中...")
         translation_task = create_translation_task(paper, cleaned_abstract)
         translation_agent = create_translator_agent()
         
@@ -2206,11 +2440,45 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
         if crewai_log_callback:
             log_agent_io("专业翻译专家", translation_task, translation_result, crewai_log_callback)
         
-        translated_content = translation_result.raw.strip()
+        translation_output = translation_result.raw.strip()
         
-        # 步骤3: 评审
-        print("  [步骤3/4] 专业评审和评分中...")
-        review_task = create_review_task(paper, translated_content)
+        # 解析翻译结果，提取中文翻译和英文原文
+        chinese_translation = ""
+        original_english_abstract = cleaned_abstract  # 默认使用清洗后的摘要
+        
+        # 查找"中文翻译："后面的内容
+        chinese_match = re.search(r'中文翻译[：:]\s*(.+?)(?:\n\n英文原文|$)', translation_output, re.DOTALL | re.I)
+        if chinese_match:
+            chinese_translation = chinese_match.group(1).strip()
+        else:
+            # 如果没有找到标记，尝试提取第一段作为中文翻译
+            lines = translation_output.split('\n')
+            if lines:
+                chinese_translation = lines[0].strip()
+        
+        # 查找"英文原文："后面的内容
+        english_match = re.search(r'英文原文[：:]\s*(.+?)(?:\n\n|$)', translation_output, re.DOTALL | re.I)
+        if english_match:
+            original_english_abstract = english_match.group(1).strip()
+        
+        # 如果中文翻译为空，使用整个输出作为中文翻译
+        if not chinese_translation or len(chinese_translation) < 10:
+            chinese_translation = translation_output
+        
+        print(f"    ✓ 翻译完成 (中文: {len(chinese_translation)} 字符, 英文: {len(original_english_abstract)} 字符)")
+        debug_logger.log(f"翻译完成，中文长度: {len(chinese_translation)} 字符", "SUCCESS")
+        
+        # 更新状态：评审中
+        if on_paper_updated and paper_id:
+            on_paper_updated(paper_id, {
+                'status': 'reviewing',
+                'status_text': '评审和评分中...',
+                'title': paper.get('title', '')
+            })
+        
+        # 步骤2: 评审（使用中英文双语）
+        print("  [步骤2/3] 专业评审和评分中...")
+        review_task = create_review_task(paper, chinese_translation, original_english_abstract)
         review_agent = create_reviewer_agent()
         
         # 发送agent工作开始状态
@@ -2238,12 +2506,13 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
         score_data = extract_score_from_review(review_text)
         
         return {
-            'translated_content': translated_content,
+            'translated_content': chinese_translation,  # 只保存中文翻译
             'review': review_text,
             'score': score_data.get('总分', 0.0),
             'score_details': score_data,
-            'is_high_value': score_data.get('总分', 0.0) > 3.0,
-            'full_abstract': full_abstract
+            'is_high_value': score_data.get('总分', 0.0) >= 3.5,
+            'full_abstract': full_abstract,
+            'original_english_abstract': original_english_abstract  # 保存英文原文
         }
     except Exception as e:
         logging.error(f"处理论文时出错: {str(e)}")
@@ -2253,7 +2522,8 @@ def process_paper_with_crewai(paper, full_abstract, source_type="网页"):
             'score': 0.0,
             'score_details': {},
             'is_high_value': False,
-            'full_abstract': full_abstract
+            'full_abstract': full_abstract,
+            'original_english_abstract': full_abstract  # 保存原始英文摘要
         }
 
 
@@ -2364,8 +2634,13 @@ def generate_daily_report(relevant_papers):
     report = []
     
     # 按评分分类论文
-    high_value_papers = [p for p in relevant_papers if p.get('is_high_value', False)]
-    other_papers = [p for p in relevant_papers if not p.get('is_high_value', False)]
+    # 只保留评分>=3.0的论文（评分<3.0的论文不输出）
+    papers_to_output = [p for p in relevant_papers if p.get('score', 0.0) >= 3.0]
+    
+    # 高价值论文：评分>=3.5
+    high_value_papers = [p for p in papers_to_output if p.get('score', 0.0) >= 3.5]
+    # 其他相关论文：评分>=3.0 且 <3.5
+    other_papers = [p for p in papers_to_output if 3.0 <= p.get('score', 0.0) < 3.5]
     
     # 按评分排序
     high_value_papers.sort(key=lambda x: x.get('score', 0.0), reverse=True)
@@ -2399,10 +2674,19 @@ def generate_daily_report(relevant_papers):
         # 替换所有匹配的JSON代码块
         result = re.sub(pattern, replace_json, review_content, flags=re.DOTALL | re.IGNORECASE)
         return result
-    
-    # 高价值论文（评分>3.0，需要进一步研究）
+
+    # 统计信息（使用表格，格式与理想文件一致）
+    report.append("## 📊 统计信息")
+    report.append("")
+    report.append("| 类别            | 数量       |")
+    report.append("| ------------- | -------- |")
+    report.append(f"| 高价值论文（评分≥3.5） | {len(high_value_papers)} 篇     |")
+    report.append(f"| 其他相关论文（3.0≤评分<3.5） | {len(other_papers)} 篇      |")
+    report.append(f"| **总计**        | **{len(papers_to_output)} 篇** |")
+
+    # 高价值论文（评分≥3.5，需要进一步研究）
     if high_value_papers:
-        report.append("## 🔥 高价值论文（评分>3.0，建议下载原文深入研究）")
+        report.append("## 🔥 高价值论文（评分≥3.5，建议下载原文深入研究）")
         
         for i, paper in enumerate(high_value_papers, 1):
             report.append(f"### {i}. {paper['title']}")
@@ -2449,9 +2733,9 @@ def generate_daily_report(relevant_papers):
                 report.append("---")
                 report.append("")
     
-    # 其他相关论文
+    # 其他相关论文（3.0≤评分<3.5）
     if other_papers:
-        report.append("## 📖 相关论文")
+        report.append("## 📖 相关论文（3.0≤评分<3.5）")
         
         for i, paper in enumerate(other_papers, 1):
             report.append(f"### {i}. {paper['title']}")
@@ -2503,14 +2787,7 @@ def generate_daily_report(relevant_papers):
                 report.append("---")
                 report.append("")
     
-    # 统计信息（使用表格，格式与理想文件一致）
-    report.append("## 📊 统计信息")
-    report.append("")
-    report.append("| 类别            | 数量       |")
-    report.append("| ------------- | -------- |")
-    report.append(f"| 高价值论文（评分>3.0） | {len(high_value_papers)} 篇     |")
-    report.append(f"| 其他相关论文        | {len(other_papers)} 篇      |")
-    report.append(f"| **总计**        | **{len(relevant_papers)} 篇** |")
+
     
     return "\n".join(report)
 
@@ -2560,11 +2837,18 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
             # 摘要提取失败
             abstract_to_save = ''
         
+        # 获取英文原文摘要
+        original_english_abstract = paper.get('original_english_abstract', '')
+        # 如果没有保存的英文原文，使用full_abstract作为英文原文
+        if not original_english_abstract:
+            original_english_abstract = full_abstract if is_success == 1 else ''
+        
         # 构建数据行
         row = {
             '论文标题': paper.get('title', ''),
             '论文链接': paper.get('link', ''),
-            '摘要': abstract_to_save,  # 保存翻译后的摘要（如果翻译成功），否则保存原始摘要
+            '摘要（中文）': abstract_to_save,  # 保存翻译后的摘要（如果翻译成功），否则保存原始摘要
+            '摘要（英文原文）': original_english_abstract,  # 保存英文原文
             '处理结果': is_success,
         }
         
@@ -2596,7 +2880,7 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
 
 
 
-def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_generated=None, on_agent_status=None, on_waiting_confirmation=None, get_confirmed_abstracts=None):
+def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_paper_removed=None, on_file_generated=None, on_agent_status=None, on_waiting_confirmation=None, get_confirmed_abstracts=None, on_paper_ready_for_confirmation=None, get_confirmed_abstract=None):
     """
     主程序
     
@@ -2604,10 +2888,13 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         on_log: 日志回调函数 (level, message)
         on_paper_added: 论文添加回调函数 (paper)
         on_paper_updated: 论文更新回调函数 (paper_id, paper)
+        on_paper_removed: 论文删除回调函数 (paper_id)
         on_file_generated: 文件生成回调函数 (file_info)
         on_agent_status: agent状态回调函数 (agent_name, status, target, output)
-        on_waiting_confirmation: 等待确认回调函数 (papers_data) -> 返回确认后的摘要字典
-        get_confirmed_abstracts: 获取确认后的摘要函数 () -> 返回 {paper_id: abstract_text}
+        on_waiting_confirmation: 等待确认回调函数 (papers_data) -> 返回确认后的摘要字典（批量模式，已弃用）
+        get_confirmed_abstracts: 获取确认后的摘要函数 () -> 返回 {paper_id: abstract_text}（批量模式，已弃用）
+        on_paper_ready_for_confirmation: 单个论文准备确认回调函数 (paper_id, paper_data)（实时模式）
+        get_confirmed_abstract: 获取单个论文确认后的摘要函数 (paper_id) -> 返回 abstract_text 或 None（实时模式）
     """
     print("=" * 80)
     print("Paper Summarizer - 学术论文自动总结系统")
@@ -2634,6 +2921,11 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
     def paper_updated(paper_id, paper):
         if on_paper_updated:
             on_paper_updated(paper_id, paper)
+    
+    # 辅助函数：发送论文删除
+    def paper_removed(paper_id):
+        if on_paper_removed:
+            on_paper_removed(paper_id)
     
     # 辅助函数：发送文件生成
     def file_generated(file_info):
@@ -2760,18 +3052,56 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         print(f"\n总共提取到 {len(all_papers)} 篇论文")
         debug_logger.log(f"总共提取到 {len(all_papers)} 篇论文")
     
-    # 4. 使用相关性分析Agent筛选相关论文
-    print("\n正在使用相关性分析Agent分析论文相关性...")
-    debug_logger.log_separator("相关性分析（Agent）")
-    relevant_papers = []
+    # 3.5. 立即将所有论文显示在"来源"栏中（状态为待处理）
+    if on_paper_added:
+        print(f"\n正在添加 {len(all_papers)} 篇论文到来源栏...")
+        for i, paper in enumerate(all_papers, 1):
+            paper_id = f"paper_pending_{i}"
+            paper['_paper_id'] = paper_id
+            on_paper_added({
+                'id': paper_id,
+                'title': paper.get('title', ''),
+                'link': paper.get('link', ''),
+                'status': 'pending'
+            })
+        print(f"✓ 已添加 {len(all_papers)} 篇论文到来源栏")
+        debug_logger.log(f"已添加 {len(all_papers)} 篇论文到来源栏")
     
-    for i, paper in enumerate(all_papers, 1):
-        print(f"\n分析论文 {i}/{len(all_papers)}: {paper.get('title', '')[:60]}...")
-        debug_logger.log(f"分析论文: {paper.get('title', '')[:60]}")
+    # 4. 并行处理多篇论文（每篇论文内部：相关性分析 -> 摘要提取，串联执行）
+    print("\n正在并行处理论文（不同论文之间并行，单篇论文内部串联）...")
+    debug_logger.log_separator("并行处理论文")
+    
+    # 确保downloads文件夹存在
+    downloads_dir = 'downloads'
+    os.makedirs(downloads_dir, exist_ok=True)
+    
+    # 创建已处理论文的记忆列表（用于重复检测）
+    processed_papers_memory = []
+    import threading
+    memory_lock = threading.Lock()  # 线程锁，确保线程安全
+    
+    def process_single_paper(paper, index, total):
+        """处理单篇论文的完整流程：相关性分析 -> 摘要提取（串联）"""
+        paper_id = paper.get('_paper_id', f"paper_{index}")
         
         try:
-            # 使用CrewAI进行相关性分析
-            relevance_task = create_relevance_analysis_task(paper)
+            print(f"\n处理论文 {index}/{total}: {paper.get('title', '')[:60]}...")
+            debug_logger.log(f"处理论文 {index}/{total}: {paper.get('title', '')[:60]}")
+            
+            # 更新状态：相关性分析中
+            if on_paper_updated:
+                on_paper_updated(paper_id, {
+                    'status': 'analyzing_relevance',
+                    'status_text': '相关性分析中...',
+                    'title': paper.get('title', '')
+                })
+            
+            # 步骤1: 相关性分析（传入已处理论文列表用于重复检测）
+            with memory_lock:
+                # 获取当前已处理的论文列表（创建副本，避免在分析过程中列表被修改）
+                current_processed = list(processed_papers_memory)
+            
+            relevance_task = create_relevance_analysis_task(paper, processed_papers=current_processed)
             
             # 发送agent工作开始状态
             send_agent_status("相关性分析专家", "start", task=relevance_task)
@@ -2793,6 +3123,8 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
             
             # 解析相关性判断结果
             relevance_code = None
+            extracted_title = None
+            extracted_url = None
             
             # 查找"相关性判断："后面的数字
             result_match = re.search(r'相关性判断[：:]\s*([01])', relevance_output, re.I)
@@ -2812,35 +3144,278 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
                 elif re.search(r'相关性判断[：:]\s*1|判断[：:]\s*1|^1\s*$', relevance_output, re.I | re.M):
                     relevance_code = 1
             
+            # 提取论文名称（规范化处理：保留空格，去除多余空格）
+            title_match = re.search(r'论文名称[：:]\s*(.+?)(?:\n|$)', relevance_output, re.I)
+            if title_match:
+                extracted_title = ' '.join(title_match.group(1).strip().split())  # 规范化空格
+            else:
+                extracted_title = None
+            
+            # 提取论文网址
+            url_match = re.search(r'论文网址[：:]\s*(.+?)(?:\n|$)', relevance_output, re.I)
+            if url_match:
+                extracted_url = url_match.group(1).strip()
+            else:
+                extracted_url = None
+            
             # 提取判断依据
             explanation_match = re.search(r'判断依据[：:]\s*(.+?)(?:\n\n|\n*$)', relevance_output, re.DOTALL | re.I)
             explanation = explanation_match.group(1).strip() if explanation_match else ""
             
-            if relevance_code == 1:
-                paper['relevance_score'] = 1
-                paper['relevance_explanation'] = explanation
-                relevant_papers.append(paper)
-                print(f"  ✓ 符合研究方向")
-                debug_logger.log(f"相关论文: {paper.get('title', '')[:60]} (判断依据: {explanation[:100]})", "SUCCESS")
-                # 发送论文添加回调
-                if on_paper_added:
-                    paper_id = f"paper_{len(relevant_papers)}"
-                    paper['_paper_id'] = paper_id  # 保存ID到paper对象中
-                    on_paper_added({
-                        'id': paper_id,
-                        'title': paper.get('title', ''),
-                        'link': paper.get('link', ''),
-                        'status': 'pending'
-                    })
+            # 使用提取的标题和URL（如果agent输出了），否则使用原始值
+            # 规范化标题：去除多余空格，但保留单词之间的单个空格
+            if extracted_title:
+                final_title = ' '.join(extracted_title.split())  # 规范化空格
             else:
-                print(f"  ✗ 不符合研究方向")
-                debug_logger.log(f"不符合方向: {paper.get('title', '')[:60]} (判断依据: {explanation[:100] if explanation else '未提供'})")
-        
+                original_title = paper.get('title', '')
+                final_title = ' '.join(original_title.split()) if original_title else ''
+            
+            final_url = extracted_url if extracted_url else paper.get('link', '')
+            
+            # 如果相关性分析失败或不相关，删除论文并返回
+            if relevance_code != 1:
+                if relevance_code == 0:
+                    # 检查是否是重复论文
+                    is_duplicate = "重复" in explanation or "duplicate" in explanation.lower() or "已处理" in explanation
+                    if is_duplicate:
+                        print(f"  ✗ 重复论文，跳过处理")
+                        debug_logger.log(f"重复论文: {final_title[:60]}", "INFO")
+                        # 重复论文需要添加到记忆列表（避免再次识别为重复）
+                        with memory_lock:
+                            processed_papers_memory.append({
+                                'title': final_title,
+                                'link': final_url
+                            })
+                    else:
+                        print(f"  ✗ 不符合研究方向")
+                        debug_logger.log(f"不符合方向: {final_title[:60]} (判断依据: {explanation[:100] if explanation else '未提供'})")
+                        # 不相关的论文不添加到记忆列表
+                else:
+                    print(f"  ✗ 相关性分析出错: 无法解析结果")
+                    debug_logger.log(f"相关性分析出错: {final_title[:60]} - 无法解析结果", "ERROR")
+                    # 分析出错的论文也不添加到记忆列表
+                
+                # 删除论文（从来源栏移除）
+                paper_removed(paper_id)
+                return None
+            
+            # 步骤2: 如果相关，进行摘要提取
+            print(f"  ✓ 符合研究方向，开始提取摘要...")
+            debug_logger.log(f"相关论文: {final_title[:60]} (判断依据: {explanation[:100]})", "SUCCESS")
+            
+            # 更新论文信息
+            paper['title'] = final_title
+            paper['link'] = final_url
+            paper['relevance_score'] = 1
+            paper['relevance_explanation'] = explanation
+            
+            # 更新状态：相关性分析通过，开始摘要提取
+            if on_paper_updated:
+                on_paper_updated(paper_id, {
+                    'status': 'extracting_abstract',
+                    'status_text': '摘要提取中...',
+                    'title': final_title,
+                    'link': final_url
+                })
+            
+            if not final_url:
+                print(f"  ✗ 论文没有URL，无法提取摘要")
+                debug_logger.log(f"论文没有URL，无法提取摘要", "WARNING")
+                paper['full_abstract'] = None
+                paper['is_pdf'] = False
+                # 更新状态：摘要提取失败，但允许用户手动添加
+                if on_paper_updated:
+                    on_paper_updated(paper_id, {
+                        'status': 'abstract_extraction_failed',
+                        'status_text': '摘要提取失败：无URL，可以手动添加摘要',
+                        'title': final_title
+                    })
+                # 即使没有URL，也显示可编辑摘要框，让用户手动添加
+                if on_paper_ready_for_confirmation:
+                    on_paper_ready_for_confirmation(paper_id, {
+                        'title': final_title,
+                        'abstract': '',  # 空摘要，让用户手动输入
+                        'link': ''
+                    })
+                return paper
+            
+            # 创建摘要提取任务
+            abstract_task = create_abstract_extraction_task(final_title, final_url)
+            
+            # 发送agent工作开始状态
+            send_agent_status("摘要提取专家", "start", task=abstract_task)
+            
+            with capture_crewai_output():
+                abstract_crew = Crew(
+                    agents=[create_abstract_extractor_agent()],
+                    tasks=[abstract_task],
+                    verbose=True,
+                    share_crew=False
+                )
+                abstract_result = abstract_crew.kickoff()
+            
+            # 发送agent工作结束状态
+            send_agent_status("摘要提取专家", "end", result=abstract_result)
+            
+            # 记录 Agent 的输入和输出
+            if crewai_log_callback:
+                log_agent_io("摘要提取专家", abstract_task, abstract_result, crewai_log_callback)
+            
+            abstract_output = abstract_result.raw.strip()
+            debug_logger.log(f"摘要提取输出: {abstract_output[:200]}...")
+            
+            # 解析摘要提取结果
+            extraction_result = None
+            abstract_content = ""
+            
+            # 查找"提取结果："后面的数字
+            result_match = re.search(r'提取结果[：:]\s*([01])', abstract_output, re.I)
+            if result_match:
+                extraction_result = int(result_match.group(1))
+            
+            # 如果没找到，尝试查找独立的0或1
+            if extraction_result is None:
+                first_line_match = re.match(r'^\s*([01])\s*$', abstract_output.split('\n')[0] if abstract_output else '')
+                if first_line_match:
+                    extraction_result = int(first_line_match.group(1))
+            
+            # 如果还是没找到，检查是否包含"提取结果：0"或"提取结果：1"
+            if extraction_result is None:
+                if re.search(r'提取结果[：:]\s*0|结果[：:]\s*0|^0\s*$', abstract_output, re.I | re.M):
+                    extraction_result = 0
+                elif re.search(r'提取结果[：:]\s*1|结果[：:]\s*1|^1\s*$', abstract_output, re.I | re.M):
+                    extraction_result = 1
+            
+            # 如果提取结果为1，提取摘要内容
+            if extraction_result == 1:
+                # 查找"摘要内容："后面的内容
+                abstract_match = re.search(r'摘要内容[：:]\s*(.+?)(?:\n\n|\n提取结果|$)', abstract_output, re.DOTALL | re.I)
+                if abstract_match:
+                    abstract_content = abstract_match.group(1).strip()
+                else:
+                    # 如果没有找到"摘要内容："标记，尝试提取"提取结果：1"之后的所有内容
+                    after_result = re.split(r'提取结果[：:]\s*1\s*\n?', abstract_output, flags=re.I)
+                    if len(after_result) > 1:
+                        abstract_content = after_result[1].strip()
+                        # 移除可能的"摘要内容："标记
+                        abstract_content = re.sub(r'^摘要内容[：:]\s*', '', abstract_content, flags=re.I)
+                
+                if abstract_content and len(abstract_content) > 50:
+                    paper['full_abstract'] = abstract_content
+                    paper['is_pdf'] = is_pdf_url(final_url) or 'arxiv.org' in final_url.lower()
+                    print(f"  ✓ 摘要提取成功 ({len(abstract_content)} 字符)")
+                    debug_logger.log(f"✓ 摘要提取成功 ({len(abstract_content)} 字符)", "SUCCESS")
+                    # 更新状态：摘要提取成功，可以编辑摘要
+                    if on_paper_updated:
+                        on_paper_updated(paper_id, {
+                            'status': 'abstract_extracted',
+                            'status_text': '摘要提取成功，可以编辑摘要',
+                            'title': final_title,
+                            'link': final_url
+                        })
+                    # 立即显示可编辑摘要框（不阻塞）
+                    if on_paper_ready_for_confirmation:
+                        on_paper_ready_for_confirmation(paper_id, {
+                            'title': final_title,
+                            'abstract': abstract_content,
+                            'link': final_url
+                        })
+                else:
+                    paper['full_abstract'] = None
+                    paper['is_pdf'] = False
+                    print(f"  ✗ 提取结果=1但摘要内容为空或太短")
+                    debug_logger.log(f"提取结果=1但摘要内容为空或太短", "WARNING")
+                    # 更新状态：摘要提取失败，但允许用户手动添加
+                    if on_paper_updated:
+                        on_paper_updated(paper_id, {
+                            'status': 'abstract_extraction_failed',
+                            'status_text': '摘要提取失败，可以手动添加摘要',
+                            'title': final_title,
+                            'link': final_url
+                        })
+                    # 即使提取失败，也显示可编辑摘要框，让用户手动添加
+                    if on_paper_ready_for_confirmation:
+                        on_paper_ready_for_confirmation(paper_id, {
+                            'title': final_title,
+                            'abstract': '',  # 空摘要，让用户手动输入
+                            'link': final_url
+                        })
+            else:
+                paper['full_abstract'] = None
+                paper['is_pdf'] = False
+                print(f"  ✗ 摘要提取失败（Agent反馈提取结果=0）")
+                debug_logger.log(f"摘要提取失败（Agent反馈提取结果=0）", "WARNING")
+                # 更新状态：摘要提取失败，但允许用户手动添加
+                if on_paper_updated:
+                    on_paper_updated(paper_id, {
+                        'status': 'abstract_extraction_failed',
+                        'status_text': '摘要提取失败，可以手动添加摘要',
+                        'title': final_title,
+                        'link': final_url
+                    })
+                # 即使提取失败，也显示可编辑摘要框，让用户手动添加
+                if on_paper_ready_for_confirmation:
+                    on_paper_ready_for_confirmation(paper_id, {
+                        'title': final_title,
+                        'abstract': '',  # 空摘要，让用户手动输入
+                        'link': final_url
+                    })
+            
+            # 处理成功后，添加到已处理列表（标题已规范化）
+            with memory_lock:
+                processed_papers_memory.append({
+                    'title': final_title,  # 已规范化
+                    'link': final_url
+                })
+            
+            return paper
+            
         except Exception as e:
-            print(f"  ✗ 相关性分析出错: {str(e)}")
-            debug_logger.log(f"相关性分析出错: {paper.get('title', '')[:60]} - {str(e)}", "ERROR")
-            # 出错时跳过该论文，不加入相关论文列表
-            continue
+            print(f"  ✗ 处理论文时出错: {str(e)}")
+            debug_logger.log(f"处理论文时出错: {paper.get('title', '')[:60]} - {str(e)}", "ERROR")
+            
+            # 即使出错，也添加到已处理列表（避免重复处理）
+            try:
+                with memory_lock:
+                    processed_papers_memory.append({
+                        'title': paper.get('title', ''),
+                        'link': paper.get('link', '')
+                    })
+            except:
+                pass
+            
+            return None
+    
+    # 并行处理多篇论文（每篇论文内部串联执行）
+    relevant_papers = []
+    
+    # 使用线程池并行处理多篇论文
+    # max_workers设置为3，避免过多线程
+    max_workers = 3
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有任务
+        futures = []
+        for i, paper in enumerate(all_papers, 1):
+            # 确保每篇论文都有_paper_id（使用pending时的ID）
+            if '_paper_id' not in paper:
+                paper['_paper_id'] = f"paper_pending_{i}"
+            future = executor.submit(process_single_paper, paper, i, len(all_papers))
+            futures.append((future, paper['_paper_id']))  # 保存paper_id用于匹配
+        
+        # 收集结果
+        for future, original_paper_id in futures:
+            try:
+                result = future.result()
+                if result:  # 如果返回了论文对象，说明是相关论文
+                    # 使用原始的paper_id，确保状态更新能匹配到正确的论文
+                    if '_paper_id' not in result:
+                        result['_paper_id'] = original_paper_id
+                    relevant_papers.append(result)
+                    # 注意：论文已经在步骤3.5中添加到了前端，这里不需要再次添加
+            except Exception as e:
+                print(f"  ✗ 获取论文处理结果时出错: {str(e)}")
+                debug_logger.log(f"获取论文处理结果时出错: {str(e)}", "ERROR")
     
     print(f"\n✓ 找到 {len(relevant_papers)} 篇相关论文")
     debug_logger.log(f"找到 {len(relevant_papers)} 篇相关论文")
@@ -2851,7 +3426,7 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         debug_logger.close()
         return
     
-    # 5. 获取完整摘要
+    # 5. 处理摘要（本地模式或已提取的摘要）
     if LOCAL_MODE:
         # 本地模式：直接使用CSV中的摘要
         print("\n本地模式：使用CSV中的摘要信息...")
@@ -2863,8 +3438,6 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
             # 从snippet中获取完整摘要（CSV中读取的摘要）
             snippet = paper.get('snippet', '')
             if snippet and len(snippet) > 0:
-                # 如果snippet长度超过500，说明可能是完整摘要
-                # 否则尝试从CSV的abstract列获取（如果有的话）
                 full_abstract = snippet
                 paper['full_abstract'] = full_abstract
                 paper['is_pdf'] = False
@@ -2876,33 +3449,13 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
                 print(f"  ✗ CSV中未找到摘要信息")
                 debug_logger.log(f"CSV中未找到摘要信息", "WARNING")
     else:
-        # 邮件模式：从URL获取完整摘要
-        print("\n正在获取论文完整摘要...")
-        debug_logger.log_separator("获取完整摘要")
+        # 邮件模式：摘要已在并行处理中提取，这里只需要检查是否有遗漏
+        print("\n检查摘要提取结果...")
+        debug_logger.log_separator("摘要提取检查")
         for i, paper in enumerate(relevant_papers, 1):
-            print(f"\n获取摘要 {i}/{len(relevant_papers)}: {paper['title'][:50]}...")
-            debug_logger.log_paper_info(paper, index=i)
-            try:
-                full_abstract, is_pdf = get_full_abstract(paper)
-                paper['full_abstract'] = full_abstract
-                paper['is_pdf'] = is_pdf
-                if full_abstract is None:
-                    print(f"  ✗ 摘要提取失败（Agent反馈不包含摘要信息）")
-                    debug_logger.log(f"摘要提取失败（Agent反馈不包含摘要信息）", "WARNING")
-                elif is_pdf:
-                    print(f"  ✓ 已从PDF提取摘要 ({len(full_abstract)} 字符)")
-                    debug_logger.log(f"✓ 已从PDF提取摘要 ({len(full_abstract)} 字符)", "SUCCESS")
-                else:
-                    print(f"  ✓ 已从网页提取摘要 ({len(full_abstract)} 字符)")
-                    debug_logger.log(f"✓ 已从网页提取摘要 ({len(full_abstract)} 字符)", "SUCCESS")
-            except Exception as e:
-                logging.error(f"获取摘要失败: {str(e)}")
-                debug_logger.log(f"获取摘要失败: {str(e)}", "ERROR")
-                # 如果获取失败，标记为None（提取失败）
-                paper['full_abstract'] = None
-                paper['is_pdf'] = False
-                print(f"  ✗ 获取摘要失败")
-                debug_logger.log(f"获取摘要失败，将跳过处理", "WARNING")
+            if 'full_abstract' not in paper or not paper.get('full_abstract'):
+                print(f"\n论文 {i}/{len(relevant_papers)}: {paper['title'][:50]}... 摘要提取失败，将跳过后续处理")
+                debug_logger.log(f"论文 {i}: {paper['title'][:50]} 摘要提取失败", "WARNING")
     
     # 5.5. 人工确认摘要（如果启用了确认功能）
     if on_waiting_confirmation and get_confirmed_abstracts:
@@ -2911,31 +3464,62 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         
         # 准备等待确认的论文数据
         confirmation_papers_data = {}
-        for paper in relevant_papers:
+        for i, paper in enumerate(relevant_papers, 1):
+            # 确保每篇论文都有_paper_id，如果没有则生成一个
             paper_id = paper.get('_paper_id', '')
-            if paper_id:
-                confirmation_papers_data[paper_id] = {
-                    'title': paper.get('title', ''),
-                    'abstract': paper.get('full_abstract', ''),
-                    'link': paper.get('link', '')
-                }
+            if not paper_id:
+                paper_id = f"paper_{i}"
+                paper['_paper_id'] = paper_id
+            
+            # 只包含有摘要的论文（摘要可能为空，但也要显示让用户确认）
+            confirmation_papers_data[paper_id] = {
+                'title': paper.get('title', ''),
+                'abstract': paper.get('full_abstract', ''),  # 可能为空，但也要显示
+                'link': paper.get('link', '')
+            }
         
-        # 发送等待确认消息（这会阻塞等待用户确认）
-        confirmed_abstracts = on_waiting_confirmation(confirmation_papers_data)
-        log('info', f'已发送 {len(confirmation_papers_data)} 篇论文等待人工确认')
-        
-        # 更新论文摘要（使用确认后的摘要）
-        for paper in relevant_papers:
-            paper_id = paper.get('_paper_id', '')
-            if paper_id and paper_id in confirmed_abstracts:
-                confirmed_abstract = confirmed_abstracts[paper_id].strip()
-                if confirmed_abstract:
-                    paper['full_abstract'] = confirmed_abstract
-                    log('info', f'论文 {paper.get("title", "")[:50]} 摘要已确认')
-                else:
-                    # 如果确认后的摘要为空，标记为失败
-                    paper['full_abstract'] = None
-                    log('warning', f'论文 {paper.get("title", "")[:50]} 确认后的摘要为空，将跳过处理')
+        # 如果有需要确认的论文，才发送等待确认消息
+        if confirmation_papers_data:
+            # 更新论文状态为"等待人工确认"
+            for paper_id in confirmation_papers_data.keys():
+                if on_paper_updated:
+                    on_paper_updated(paper_id, {
+                        'status': 'waiting_confirmation',
+                        'status_text': '等待人工确认摘要...',
+                        'title': confirmation_papers_data[paper_id].get('title', '')
+                    })
+            
+            # 发送等待确认消息（这会阻塞等待用户确认）
+            confirmed_abstracts = on_waiting_confirmation(confirmation_papers_data)
+            log('info', f'已发送 {len(confirmation_papers_data)} 篇论文等待人工确认')
+            
+            # 更新论文摘要（使用确认后的摘要）
+            for paper in relevant_papers:
+                paper_id = paper.get('_paper_id', '')
+                if paper_id and paper_id in confirmed_abstracts:
+                    confirmed_abstract = confirmed_abstracts[paper_id].strip()
+                    if confirmed_abstract:
+                        paper['full_abstract'] = confirmed_abstract
+                        log('info', f'论文 {paper.get("title", "")[:50]} 摘要已确认')
+                        # 更新状态：摘要已确认，准备开始验证
+                        if on_paper_updated:
+                            on_paper_updated(paper_id, {
+                                'status': 'abstract_confirmed',
+                                'status_text': '摘要已确认，准备开始验证...',
+                                'title': paper.get('title', '')
+                            })
+                    else:
+                        # 如果确认后的摘要为空，标记为失败
+                        paper['full_abstract'] = None
+                        log('warning', f'论文 {paper.get("title", "")[:50]} 确认后的摘要为空，将跳过处理')
+                        if on_paper_updated:
+                            on_paper_updated(paper_id, {
+                                'status': 'error',
+                                'status_text': '摘要确认失败：摘要为空',
+                                'title': paper.get('title', '')
+                            })
+        else:
+            log('info', '没有需要确认的论文，跳过人工确认步骤')
         
         print("\n人工确认完成，继续处理...")
         debug_logger.log("人工确认完成，继续处理")
@@ -2958,14 +3542,18 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         print(f"\n处理 {i}/{len(papers_with_abstract)}: {paper['title'][:50]}...")
         debug_logger.log_paper_info(paper, index=i)
         
-        # 使用完整摘要进行处理
+        # 使用完整摘要进行处理（摘要已在批量确认时更新）
         full_abstract = paper.get('full_abstract')
+        
+        if not full_abstract or not full_abstract.strip():
+            log('warning', f'论文 {paper.get("title", "")[:50]} 没有摘要，跳过处理')
+            continue
         
         # 确定摘要来源类型
         source_type = "PDF" if paper.get('is_pdf', False) else "网页"
         
         # 使用 CrewAI 框架处理（包含验证、翻译、评审）
-        result = process_paper_with_crewai(paper, full_abstract, source_type)
+        result = process_paper_with_crewai(paper, full_abstract, source_type, on_paper_updated=on_paper_updated)
         
         # 更新论文信息
         paper['translated_content'] = result['translated_content']
@@ -2973,6 +3561,7 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
         paper['score'] = result['score']
         paper['score_details'] = result['score_details']
         paper['is_high_value'] = result['is_high_value']
+        paper['original_english_abstract'] = result.get('original_english_abstract', full_abstract)  # 保存英文原文
         
         print(f"  ✓ 完成 - 评分: {paper['score']:.2f}/4.0", end="")
         if paper['is_high_value']:
@@ -3008,6 +3597,26 @@ def main(on_log=None, on_paper_added=None, on_paper_updated=None, on_file_genera
                 'status': paper_status,
                 'abstract': translated_content,
                 'score': paper.get('score', 0.0)
+            })
+    
+    # 为摘要提取失败的论文也显示可编辑摘要框（让用户手动添加）
+    for paper in papers_without_abstract:
+        paper_id = paper.get('_paper_id', '')
+        if not paper_id:
+            continue
+        # 发送准备确认消息，让用户手动添加摘要
+        if on_paper_ready_for_confirmation:
+            on_paper_ready_for_confirmation(paper_id, {
+                'title': paper.get('title', ''),
+                'abstract': '',  # 空摘要，让用户手动输入
+                'link': paper.get('link', '')
+            })
+        # 更新状态
+        if on_paper_updated:
+            on_paper_updated(paper_id, {
+                'status': 'abstract_extraction_failed',
+                'status_text': '摘要提取失败，可以手动添加摘要',
+                'title': paper.get('title', '')
             })
     
     # 标记摘要提取失败的论文
