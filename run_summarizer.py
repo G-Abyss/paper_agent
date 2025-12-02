@@ -10,7 +10,6 @@ import email
 from email.header import decode_header
 import re
 from datetime import datetime, timedelta
-import yaml
 from dotenv import load_dotenv
 import ollama
 from bs4 import BeautifulSoup
@@ -234,12 +233,7 @@ llm = LLM(
     api_key="ollama"  # Ollama 不需要真实的 API key
 )
 
-# 加载关键词
-with open('keywords.yaml', 'r', encoding='utf-8') as f:
-    KEYWORDS = yaml.safe_load(f)
-
-HIGH_PRIORITY_KEYWORDS = [kw.lower() for kw in KEYWORDS['high_priority']]
-RELATED_KEYWORDS = [kw.lower() for kw in KEYWORDS['related']]
+# 注意：关键词匹配功能已移除，现在使用 CrewAI Agent 进行相关性分析
 
 
 # 调试功能
@@ -588,20 +582,7 @@ def load_papers_from_csv(csv_path, title_col=0, abstract_col=2, link_col=None):
     return papers
 
 
-def check_relevance(paper):
-    """检查论文相关性"""
-    text = (paper['title'] + ' ' + paper['snippet']).lower()
-    
-    # 检查高优先级关键词
-    high_priority_matches = sum(1 for kw in HIGH_PRIORITY_KEYWORDS if kw in text)
-    
-    # 检查相关关键词
-    related_matches = sum(1 for kw in RELATED_KEYWORDS if kw in text)
-    
-    # 计算相关性分数
-    relevance_score = high_priority_matches * 2 + related_matches
-    
-    return relevance_score, high_priority_matches > 0
+# 注意：check_relevance 函数已移除，现在使用 CrewAI Agent 进行相关性分析
 
 
 def is_pdf_url(url):
