@@ -749,6 +749,12 @@
             </div>
             <div class="run-options">
                 <div class="option-group">
+                    <label>研究方向关键词</label>
+                    <input type="text" class="input-field" id="keywords" 
+                           placeholder="例如: 机器人学、控制理论、遥操作、机器人动力学、力控、机器学习" 
+                           value="机器人学、控制理论、遥操作、机器人动力学、力控、机器学习">
+                </div>
+                <div class="option-group">
                     <label>运行模式</label>
                     <div class="radio-group">
                         <label class="radio-option">
@@ -1275,9 +1281,20 @@
                 }
             } else {
                 // 更新现有摘要框的内容
+                // 重要：如果用户已经编辑过摘要，不要覆盖用户编辑的内容
                 const textarea = editableAbstract.querySelector('textarea');
                 if (textarea) {
-                    textarea.value = paperData.abstract || '';
+                    // 只有当新数据有摘要且当前文本框为空时，才更新
+                    // 或者如果新数据的摘要与当前内容不同，可能是系统更新，需要更新
+                    const currentValue = textarea.value.trim();
+                    const newValue = (paperData.abstract || '').trim();
+                    
+                    // 如果当前文本框为空，使用新数据
+                    // 如果新数据不为空且与当前内容不同，可能是系统更新（例如摘要提取成功），更新内容
+                    if (currentValue === '' || (newValue !== '' && newValue !== currentValue)) {
+                        textarea.value = newValue;
+                    }
+                    // 否则保持用户编辑的内容不变
                 }
             }
             
@@ -1513,8 +1530,10 @@
             if (isRunning) return;
 
             const mode = document.querySelector('input[name="mode"]:checked').value;
+            const keywords = document.getElementById('keywords').value.trim();
             const config = {
-                mode: mode
+                mode: mode,
+                keywords: keywords || '机器人学、控制理论、遥操作、机器人动力学、力控、机器学习'
             };
 
             if (mode === 'local') {

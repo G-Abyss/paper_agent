@@ -35,7 +35,8 @@ running_status = {
 
 # 用于线程间通信的事件
 confirmation_event = threading.Event()
-confirmed_papers = {}  # 确认后的论文摘要数据
+confirmed_papers = {}  # 确认后的论文摘要数据 {paper_id: abstract_text}（批量模式）
+paper_confirmation_papers = {}  # 需要确认的论文数据 {paper_id: paper_data}（用于批量确认）
 
 def emit_log(level, message):
     """发送日志消息到前端"""
@@ -208,15 +209,21 @@ def get_status():
 
 @app.route('/api/confirm_abstracts', methods=['POST'])
 def confirm_abstracts():
-    """确认论文摘要，继续处理（批量模式，已弃用）"""
-    global confirmed_papers, confirmation_event, running_status
+    """确认所有论文摘要，继续处理（批量模式）"""
+    global confirmed_papers, confirmation_event, running_status, paper_confirmation_papers
     
     try:
         data = request.json
-        confirmed_papers = data.get('papers', {})  # {paper_id: abstract_text}
+        confirmed_papers_data = data.get('papers', {})  # {paper_id: abstract_text}
+        
+        # 更新确认后的摘要（批量模式）
+        confirmed_papers = confirmed_papers_data
         
         # 更新运行状态
         running_status['waiting_confirmation'] = False
+        
+        # 清空需要确认的论文列表
+        paper_confirmation_papers.clear()
         
         # 通知等待的线程继续执行
         confirmation_event.set()
@@ -243,9 +250,13 @@ def handle_disconnect():
 
 def run_summarizer_task(config):
     """在后台线程中运行summarizer任务"""
-    global running_status
+    global running_status, paper_confirmation_papers, confirmed_papers
     
     try:
+        # 清空之前的确认状态
+        paper_confirmation_papers.clear()
+        confirmed_papers.clear()
+        
         # 设置环境变量
         if config.get('mode') == 'local':
             os.environ['LOCAL'] = '1'
@@ -255,10 +266,14 @@ def run_summarizer_task(config):
             os.environ['START_DAYS'] = str(config.get('start_days', 1))
             os.environ['END_DAYS'] = str(config.get('end_days', 0))
         
+        # 设置研究方向关键词
+        keywords = config.get('keywords', '机器人学、控制理论、遥操作、机器人动力学、力控、机器学习')
+        os.environ['RESEARCH_KEYWORDS'] = keywords
+        
         emit_log('info', '开始处理任务...')
         
         # 导入并运行主程序
-        import run_summarizer as summarizer
+        from main import main
         
         # 运行主程序（带回调）
         try:
@@ -284,16 +299,46 @@ def run_summarizer_task(config):
                 # 返回确认后的摘要
                 return confirmed_papers
             
-            def get_confirmed_abstracts():
-                """获取确认后的摘要"""
-                global confirmed_papers
-                return confirmed_papers
+            # get_confirmed_abstracts 已在上面定义
             
             def paper_ready_for_confirmation(paper_id, paper_data):
                 """单个论文准备确认（立即显示可编辑摘要框，不阻塞）"""
+                global paper_confirmation_papers
+                # 记录需要确认的论文（不创建阻塞事件，只记录）
+                paper_confirmation_papers[paper_id] = paper_data
+                # 立即显示可编辑摘要框（不阻塞）
                 emit_paper_ready_for_confirmation(paper_id, paper_data)
             
-            summarizer.main(
+            def get_confirmed_abstracts():
+                """获取所有确认后的摘要（批量模式，阻塞等待用户确认所有论文）"""
+                global paper_confirmation_papers, confirmation_event, confirmed_papers, running_status
+                
+                # 更新状态为等待人工确认
+                running_status['waiting_confirmation'] = True
+                running_status['confirmation_papers'] = paper_confirmation_papers.copy()
+                
+                # 发送等待确认消息（批量模式）
+                # 即使paper_confirmation_papers为空，也发送消息，让前端知道可以继续
+                if paper_confirmation_papers:
+                    emit_waiting_confirmation(paper_confirmation_papers)
+                else:
+                    # 如果没有需要确认的论文，发送空字典，但仍然等待确认
+                    emit_waiting_confirmation({})
+                
+                emit_status('waiting_confirmation')
+                
+                # 清空之前确认的数据
+                confirmed_papers = {}
+                
+                # 等待确认事件（阻塞等待用户点击确认按钮）
+                confirmation_event.clear()
+                confirmation_event.wait()  # 阻塞等待确认
+                
+                # 返回确认后的摘要字典 {paper_id: abstract_text}
+                # 如果用户没有确认任何论文，返回空字典，系统会使用原始摘要
+                return confirmed_papers
+            
+            main(
                 on_log=emit_log,
                 on_paper_added=emit_paper_added,
                 on_paper_updated=emit_paper_updated,
@@ -301,9 +346,9 @@ def run_summarizer_task(config):
                 on_file_generated=emit_file_generated,
                 on_agent_status=emit_agent_status,
                 on_waiting_confirmation=wait_for_confirmation,
-                get_confirmed_abstracts=get_confirmed_abstracts,
+                get_confirmed_abstracts=get_confirmed_abstracts,  # 使用批量确认
                 on_paper_ready_for_confirmation=paper_ready_for_confirmation,
-                get_confirmed_abstract=None  # 不再需要实时确认
+                get_confirmed_abstract=None  # 不使用单篇确认
             )
             emit_log('success', '任务完成！')
             emit_status('completed')
