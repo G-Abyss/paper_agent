@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 配置和初始化模块
+
+主要修改点：
+- 优化代码结构和注释
+- 统一配置加载逻辑
 """
 
 import os
 import asyncio
 import warnings
 import atexit
-from datetime import datetime
 from dotenv import load_dotenv
 from crewai import LLM
 import logging
@@ -58,16 +61,52 @@ logging.basicConfig(
 # 加载环境变量
 load_dotenv()
 
-# 邮件配置
-QMAIL_USER = os.getenv('QMAIL_USER')
-QMAIL_PASSWORD = os.getenv('QMAIL_PASSWORD')
+# 邮件配置（优先从配置文件读取，否则从环境变量读取）
+def _load_email_config():
+    """延迟加载邮箱配置，避免循环导入"""
+    try:
+        from utils.email_config import get_email_config
+        email_config = get_email_config()
+        if email_config:
+            return (
+                email_config.get('user'),
+                email_config.get('password'),
+                email_config.get('imap_server', 'imap.qq.com'),
+                email_config.get('imap_port', 993)
+            )
+    except Exception as e:
+        logging.warning(f"加载邮箱配置失败，使用环境变量: {e}")
+    return (
+        os.getenv('QMAIL_USER'),
+        os.getenv('QMAIL_PASSWORD'),
+        os.getenv('QMAIL_IMAP_SERVER', 'imap.qq.com'),
+        int(os.getenv('QMAIL_IMAP_PORT', '993'))
+    )
 
-# Ollama配置
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:32b')
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://192.168.2.169:11434')
+QMAIL_USER, QMAIL_PASSWORD, QMAIL_IMAP_SERVER, QMAIL_IMAP_PORT = _load_email_config()
+
+# Ollama配置（优先从配置文件读取，否则从环境变量读取）
+def _load_model_config():
+    """延迟加载模型配置，避免循环导入"""
+    try:
+        from utils.model_config import get_active_model
+        active_model = get_active_model()
+        if active_model and active_model.get('type') == 'local':
+            return (
+                active_model.get('model_name', 'qwen2.5:32b'),
+                active_model.get('base_url', 'http://192.168.2.169:11434')
+            )
+    except Exception as e:
+        logging.warning(f"加载模型配置失败，使用环境变量: {e}")
+    return (
+        os.getenv('OLLAMA_MODEL', 'qwen2.5:32b'),
+        os.getenv('OLLAMA_BASE_URL', 'http://192.168.2.169:11434')
+    )
+
+OLLAMA_MODEL, OLLAMA_BASE_URL = _load_model_config()
 
 # 邮件处理配置
-MAX_EMAILS = int(os.getenv('MAX_EMAILS', 20))
+# 注意：已移除MAX_EMAILS限制，现在使用本地存储同步所有邮件，处理时从本地筛选
 # 日期范围配置：从前START_DAYS天到前END_DAYS天
 # 例如：START_DAYS=3, END_DAYS=0 表示从前3天到今天
 #      START_DAYS=7, END_DAYS=3 表示从前7天到前3天

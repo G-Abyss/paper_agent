@@ -2,42 +2,35 @@
 # -*- coding: utf-8 -*-
 """
 主程序入口
+
+主要修改点：
+- 删除未使用的导入（email, ssl, imaplib, crewai_log_callback, agent_status_callback, capture_crewai_output）
+- 删除注释掉的代码
+- 删除重复的print语句
+- 优化代码结构和注释
 """
 
 import os
-import email
-import ssl
-import imaplib
 import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import logging
 
-# 导入配置
 from config import (
-    LOCAL_MODE, CSV_FILE_PATH, CSV_TITLE_COLUMN, CSV_ABSTRACT_COLUMN, CSV_LINK_COLUMN,
-    START_DAYS, END_DAYS, MAX_EMAILS, BACKUP_DIR
+    CSV_FILE_PATH, CSV_TITLE_COLUMN, CSV_ABSTRACT_COLUMN, CSV_LINK_COLUMN,
+    START_DAYS, END_DAYS, BACKUP_DIR
 )
-
-# 导入工具模块
-from utils.email_utils import connect_gmail, fetch_scholar_emails, extract_paper_info, is_email_in_date_range
-from utils.file_utils import load_papers_from_csv
+# LOCAL_MODE 在函数内部动态读取，确保使用最新的环境变量
+from utils.email_utils import connect_gmail
+from utils.file_utils import load_papers_from_csv, deduplicate_papers_by_title
 from utils.debug_utils import debug_logger
-
-# 导入处理器
+from utils.email_storage import sync_remote_emails_to_local, filter_emails_by_date_range
 from processors.relevance_processor import process_relevance_and_extraction
 from processors.paper_processor import process_paper_with_crewai
-
-# 导入关键词扩写
 from agents.keyword_expansion_agent import expand_keywords
-
-# 导入报告生成
 from reporters.markdown_reporter import generate_daily_report
 from reporters.csv_reporter import export_all_papers_to_csv
-
-# 导入回调
-from callbacks.frontend_callbacks import set_callbacks, crewai_log_callback, agent_status_callback
-from callbacks.crewai_callbacks import capture_crewai_output
+from callbacks.frontend_callbacks import set_callbacks
 
 
 def main(
@@ -62,10 +55,10 @@ def main(
         on_paper_removed: 论文删除回调函数 (paper_id)
         on_file_generated: 文件生成回调函数 (file_info)
         on_agent_status: agent状态回调函数 (agent_name, status, target, output)
-        on_waiting_confirmation: 等待确认回调函数 (papers_data) -> 返回确认后的摘要字典（批量模式，已弃用）
-        get_confirmed_abstracts: 获取确认后的摘要函数 () -> 返回 {paper_id: abstract_text}（批量模式，已弃用）
-        on_paper_ready_for_confirmation: 单个论文准备确认回调函数 (paper_id, paper_data)（实时模式）
-        get_confirmed_abstract: 获取单个论文确认后的摘要函数 (paper_id) -> 返回 abstract_text 或 None（实时模式）
+        get_confirmed_abstracts: 获取确认后的摘要函数 () -> 返回 {paper_id: abstract_text}（批量模式）
+        on_paper_ready_for_confirmation: 单个论文准备确认回调函数 (paper_id, paper_data)
+        on_waiting_confirmation: 等待确认回调函数（已弃用，保留以兼容旧代码）
+        get_confirmed_abstract: 获取单个论文确认后的摘要函数（已弃用，保留以兼容旧代码）
     """
     print("=" * 80)
     print("Paper Summarizer - 学术论文自动总结系统")
@@ -85,9 +78,6 @@ def main(
             on_log(level, message)
     
     # 0. 关键词扩写（在开始处理论文之前执行，这是第一步）
-    # log('info', '=' * 80)
-    # log('info', '【步骤0/5】关键词扩写 - 根据用户提供的关键词生成详细的研究方向描述')
-    # log('info', '=' * 80)
     log('info', f'用户提供的关键词: {research_keywords}')
     log('info', '正在执行关键词扩写...')
     expanded_keywords = expand_keywords(research_keywords, on_log=log)
@@ -98,9 +88,10 @@ def main(
     else:
         log('warning', '⚠ 关键词扩写失败或跳过，将使用原始关键词')
         expanded_keywords = None
-    # log('info', '')
     
     # 1. 根据模式选择数据源
+    # 动态读取LOCAL_MODE，确保使用最新的环境变量
+    LOCAL_MODE = os.getenv('LOCAL', '0') == '1'
     if LOCAL_MODE:
         print("=" * 80)
         print("本地处理模式 (LOCAL=1)")
@@ -139,88 +130,76 @@ def main(
         print("=" * 80)
         print()
         
-        # 连接Gmail
-        mail = connect_gmail()
-        
-        # 获取邮件（从前START_DAYS天到前END_DAYS天）
-        email_ids = fetch_scholar_emails(mail, start_days=START_DAYS, end_days=END_DAYS)
-        
-        if not email_ids:
-            print("\n没有找到新的学术推送邮件")
-            mail.close()
-            mail.logout()
-            return
-            
-        # 处理邮件
-        all_papers = []
-        
+        # 步骤1: 同步远程邮箱到本地
+        print("步骤1: 同步远程邮箱到本地...")
+        mail = None
         try:
-            for email_id in email_ids[:MAX_EMAILS]:
-                print(f"\n处理邮件 {email_id.decode()}...")
-                
+            mail = connect_gmail()
+            # 同步最近30天的邮件（确保覆盖用户可能选择的时间范围）
+            sync_result = sync_remote_emails_to_local(mail, start_days=30, end_days=0)
+            print(f"✓ {sync_result['message']}")
+            print(f"  共处理 {sync_result['total_count']} 封邮件，新增/更新 {sync_result['updated_count']} 封")
+        except Exception as e:
+            print(f"✗ 同步远程邮箱失败: {str(e)}")
+            logging.error(f"同步远程邮箱失败: {str(e)}")
+            if mail:
                 try:
-                    status, msg_data = mail.fetch(email_id, "(RFC822)")
-                    
-                    if status != 'OK':
-                        print(f"  警告: 无法获取邮件内容 (状态: {status})")
-                        continue
-                    
-                    for response_part in msg_data:
-                        if isinstance(response_part, tuple):
-                            msg = email.message_from_bytes(response_part[1])
-                            
-                            # 验证邮件日期是否在指定范围内
-                            if not is_email_in_date_range(msg, start_days=START_DAYS, end_days=END_DAYS):
-                                email_date_str = msg.get('Date', '未知')
-                                print(f"  跳过: 邮件日期不在范围内 ({email_date_str})")
-                                continue
-                            
-                            # 获取邮件正文
-                            if msg.is_multipart():
-                                for part in msg.walk():
-                                    if part.get_content_type() == "text/html":
-                                        body = part.get_payload(decode=True).decode()
-                                        break
-                            else:
-                                body = msg.get_payload(decode=True).decode()
-                            
-                            # 提取论文信息
-                            papers = extract_paper_info(body)
-                            all_papers.extend(papers)
-                            print(f"  提取到 {len(papers)} 篇论文")
-                            
-                except (imaplib.IMAP4.error, ssl.SSLError, OSError) as e:
-                    print(f"  警告: 处理邮件时出错: {str(e)}")
-                    # 尝试重新连接
-                    try:
-                        mail.close()
-                    except:
-                        pass
-                    try:
-                        mail = connect_gmail()
-                        mail.select("inbox")
-                    except Exception as reconnect_error:
-                        print(f"  错误: 重新连接失败: {str(reconnect_error)}")
-                        break
-                    continue
-                except Exception as e:
-                    print(f"  警告: 处理邮件时出现未知错误: {str(e)}")
-                    continue
+                    mail.close()
+                    mail.logout()
+                except:
+                    pass
+            return
         finally:
-            # 确保连接被正确关闭
-            try:
-                mail.close()
-            except:
-                pass
-            try:
-                mail.logout()
-            except:
-                pass
+            if mail:
+                try:
+                    mail.close()
+                    mail.logout()
+                except:
+                    pass
         
-        print(f"\n总共提取到 {len(all_papers)} 篇论文")
+        # 步骤2: 从本地存储中根据时间范围筛选邮件
+        print(f"\n步骤2: 从本地存储筛选邮件（前{START_DAYS}天到前{END_DAYS}天）...")
+        filtered_emails = filter_emails_by_date_range(START_DAYS, END_DAYS)
+        
+        if not filtered_emails:
+            print("\n没有找到符合条件的邮件")
+            return
+        
+        print(f"✓ 找到 {len(filtered_emails)} 封符合条件的邮件")
+        
+        # 步骤3: 从筛选的邮件中提取论文信息
+        print("\n步骤3: 提取论文信息...")
+        all_papers = []
+        for email_item in filtered_emails:
+            papers = email_item.get('papers', [])
+            all_papers.extend(papers)
+            print(f"  邮件 [{email_item.get('subject', '无主题')[:50]}...] 包含 {len(papers)} 篇论文")
+        
+        print(f"\n✓ 总共提取到 {len(all_papers)} 篇论文")
         debug_logger.log(f"总共提取到 {len(all_papers)} 篇论文")
     
-    # 2. 立即将所有论文显示在"来源"栏中（状态为待处理）
+    # 2. 查重处理：去除重复论文（在相关性分析之前）
+    print("\n步骤4: 查重处理（去除重复论文）...")
+    original_count = len(all_papers)
+    all_papers, duplicate_papers = deduplicate_papers_by_title(all_papers)
+    duplicate_count = len(duplicate_papers)
+    
+    if duplicate_count > 0:
+        print(f"✓ 发现 {duplicate_count} 篇重复论文，已去除")
+        debug_logger.log(f"查重：从 {original_count} 篇论文中去除 {duplicate_count} 篇重复论文")
+        for dup in duplicate_papers[:10]:  # 只显示前10个重复项
+            print(f"  重复: \"{dup['original_title'][:60]}...\" 与 \"{dup['duplicate_title'][:60]}...\"")
+            debug_logger.log(f"  重复论文: \"{dup['original_title']}\" 与 \"{dup['duplicate_title']}\"")
+        if duplicate_count > 10:
+            print(f"  ... 还有 {duplicate_count - 10} 篇重复论文未显示")
+    else:
+        print(f"✓ 未发现重复论文")
+        debug_logger.log(f"查重：未发现重复论文")
+    
+    print(f"✓ 查重后剩余 {len(all_papers)} 篇论文")
+    debug_logger.log(f"查重后剩余 {len(all_papers)} 篇论文")
+    
+    # 3. 立即将所有论文显示在"来源"栏中（状态为待处理）
     if on_paper_added:
         print(f"\n正在添加 {len(all_papers)} 篇论文到来源栏...")
         for i, paper in enumerate(all_papers, 1):
@@ -235,7 +214,7 @@ def main(
         print(f"✓ 已添加 {len(all_papers)} 篇论文到来源栏")
         debug_logger.log(f"已添加 {len(all_papers)} 篇论文到来源栏")
     
-    # 3. 并行处理多篇论文（每篇论文内部：相关性分析 -> 摘要提取，串联执行）
+    # 4. 并行处理多篇论文（每篇论文内部：相关性分析 -> 摘要提取，串联执行）
     print("\n正在并行处理论文（不同论文之间并行，单篇论文内部串联）...")
     debug_logger.log_separator("并行处理论文")
     
@@ -260,6 +239,8 @@ def main(
                 current_processed = list(processed_papers_memory)
             
             # 使用相关性处理器处理论文
+            # 动态读取LOCAL_MODE，确保使用最新的环境变量
+            current_local_mode = os.getenv('LOCAL', '0') == '1'
             result = process_relevance_and_extraction(
                 paper, 
                 processed_papers=current_processed,
@@ -267,7 +248,8 @@ def main(
                 on_paper_removed=on_paper_removed,
                 on_paper_ready_for_confirmation=on_paper_ready_for_confirmation,
                 research_keywords=research_keywords,
-                expanded_keywords=expanded_keywords
+                expanded_keywords=expanded_keywords,
+                is_local_mode=current_local_mode  # 传递本地模式标志
             )
             
             # 如果处理成功，添加到已处理列表
@@ -338,45 +320,16 @@ def main(
         return
     
     # 4. 处理摘要（本地模式或已提取的摘要）
-    if LOCAL_MODE:
-        # 本地模式：直接使用CSV中的摘要，但也需要显示可编辑摘要框让用户确认
-        print("\n本地模式：使用CSV中的摘要信息...")
-        debug_logger.log_separator("使用CSV摘要")
+    # 动态读取LOCAL_MODE，确保使用最新的环境变量
+    current_local_mode = os.getenv('LOCAL', '0') == '1'
+    if current_local_mode:
+        # 本地模式：摘要已在相关性分析阶段从CSV读取并显示确认框，这里只需要检查是否有遗漏
+        print("\n本地模式：检查CSV摘要读取结果...")
+        debug_logger.log_separator("CSV摘要检查")
         for i, paper in enumerate(relevant_papers, 1):
-            print(f"\n处理摘要 {i}/{len(relevant_papers)}: {paper['title'][:50]}...")
-            debug_logger.log_paper_info(paper, index=i)
-            
-            paper_id = paper.get('_paper_id', f"paper_{i}")
-            
-            # 从snippet中获取完整摘要（CSV中读取的摘要）
-            snippet = paper.get('snippet', '')
-            if snippet and len(snippet) > 0:
-                full_abstract = snippet
-                paper['full_abstract'] = full_abstract
-                paper['is_pdf'] = False
-                print(f"  ✓ 使用CSV中的摘要 ({len(full_abstract)} 字符)")
-                debug_logger.log(f"✓ 使用CSV中的摘要 ({len(full_abstract)} 字符)", "SUCCESS")
-                
-                # 显示可编辑摘要框，让用户确认（可以编辑）
-                if on_paper_ready_for_confirmation:
-                    on_paper_ready_for_confirmation(paper_id, {
-                        'title': paper.get('title', ''),
-                        'abstract': full_abstract,
-                        'link': paper.get('link', '')
-                    })
-            else:
-                paper['full_abstract'] = None
-                paper['is_pdf'] = False
-                print(f"  ✗ CSV中未找到摘要信息")
-                debug_logger.log(f"CSV中未找到摘要信息", "WARNING")
-                
-                # 即使没有摘要，也显示可编辑摘要框，让用户手动添加
-                if on_paper_ready_for_confirmation:
-                    on_paper_ready_for_confirmation(paper_id, {
-                        'title': paper.get('title', ''),
-                        'abstract': '',  # 空摘要，让用户手动输入
-                        'link': paper.get('link', '')
-                    })
+            if 'full_abstract' not in paper or not paper.get('full_abstract'):
+                print(f"\n论文 {i}/{len(relevant_papers)}: {paper['title'][:50]}... CSV中未找到摘要，可以手动添加摘要")
+                debug_logger.log(f"论文 {i}: {paper['title'][:50]} CSV中未找到摘要", "WARNING")
     else:
         # 邮件模式：摘要已在并行处理中提取，这里只需要检查是否有遗漏
         print("\n检查摘要提取结果...")
@@ -388,12 +341,9 @@ def main(
     
     # 5. 等待用户确认所有论文的摘要（批量确认）
     if get_confirmed_abstracts:
-        # log('info', '=' * 80)
         log('info', '所有论文的摘要提取已完成，等待用户确认...')
-        # log('info', '=' * 80)
         log('info', f'共有 {len(relevant_papers)} 篇论文需要确认摘要')
         log('info', '用户可以在前端编辑摘要，确认无误后点击"等待人工确认"按钮继续处理')
-        # log('info', '')
         
         # 批量获取所有确认后的摘要（阻塞等待用户点击确认按钮）
         confirmed_abstracts_dict = get_confirmed_abstracts()  # 返回 {paper_id: abstract_text}
@@ -420,8 +370,6 @@ def main(
                 else:
                     paper['full_abstract'] = None
                     log('warning', f'论文 "{paper.get("title", "")[:50]}" 未确认且无原始摘要，将跳过处理')
-        
-        # log('info', '')
     
     # 6. 使用 CrewAI 处理论文：验证 + 翻译 + 评审
     print("\n正在使用AI处理论文（验证 + 翻译 + 评审）...")
@@ -463,6 +411,8 @@ def main(
         paper['score_details'] = result['score_details']
         paper['is_high_value'] = result['is_high_value']
         paper['original_english_abstract'] = result.get('original_english_abstract', full_abstract)  # 保存英文原文
+        paper['multi_model_results'] = result.get('multi_model_results', {})  # 保存多模型评审结果
+        paper['summary_result'] = result.get('summary_result')  # 保存汇总结果（如果有多个模型）
         
         print(f"  ✓ 完成 - 评分: {paper['score']:.2f}/4.0", end="")
         if paper['is_high_value']:
@@ -497,7 +447,14 @@ def main(
             on_paper_updated(paper_id, {
                 'status': paper_status,
                 'abstract': translated_content,
-                'score': paper.get('score', 0.0)
+                'review': review_content,
+                'score': paper.get('score', 0.0),
+                'score_details': paper.get('score_details', {}),
+                'is_high_value': paper.get('is_high_value', False),
+                'title': paper.get('title', ''),
+                'link': paper.get('link', ''),
+                'multi_model_results': paper.get('multi_model_results', {}),  # 包含多模型评审结果
+                'summary_result': paper.get('summary_result')  # 包含汇总结果（如果有多个模型）
             })
     
     # 为摘要提取失败的论文也显示可编辑摘要框（让用户手动添加）

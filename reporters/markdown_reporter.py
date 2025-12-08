@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Markdown报告生成
+
+主要修改点：
+- 优化代码结构和注释
 """
 
 import json

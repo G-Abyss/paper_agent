@@ -2,21 +2,25 @@
 # -*- coding: utf-8 -*-
 """
 相关性处理（分析+提取）
+
+主要修改点：
+- 删除未使用的导入（create_pdf_processor_agent, create_pdf_abstract_extraction_task, 
+  create_web_abstract_extractor_agent, create_web_abstract_extraction_task, agent_status_callback）
+- 优化代码结构和注释
 """
 
 import re
+import logging
 from agents.relevance_agent import create_relevance_analyzer_agent, create_relevance_analysis_task
 from agents.abstract_agent import create_abstract_extractor_agent, create_abstract_extraction_task
-from agents.abstract_agent import create_pdf_processor_agent, create_pdf_abstract_extraction_task
-from agents.abstract_agent import create_web_abstract_extractor_agent, create_web_abstract_extraction_task
 from callbacks.crewai_callbacks import capture_crewai_output, log_agent_io
-from callbacks.frontend_callbacks import send_agent_status, agent_status_callback, crewai_log_callback
+from callbacks.frontend_callbacks import send_agent_status, crewai_log_callback
 from crewai import Crew
 from utils.file_utils import is_pdf_url
 from utils.debug_utils import debug_logger
 
 
-def process_relevance_and_extraction(paper, processed_papers=None, on_paper_updated=None, on_paper_removed=None, on_paper_ready_for_confirmation=None, research_keywords=None, expanded_keywords=None):
+def process_relevance_and_extraction(paper, processed_papers=None, on_paper_updated=None, on_paper_removed=None, on_paper_ready_for_confirmation=None, research_keywords=None, expanded_keywords=None, is_local_mode=False):
     """
     处理相关性分析和摘要提取
     
@@ -28,6 +32,7 @@ def process_relevance_and_extraction(paper, processed_papers=None, on_paper_upda
         on_paper_ready_for_confirmation: 论文准备确认回调函数
         research_keywords: 研究方向关键词字符串，例如"机器人学、控制理论、遥操作"
         expanded_keywords: 扩写后的研究方向描述（如果提供了，将优先使用此描述）
+        is_local_mode: 是否为本地模式，如果是则跳过摘要提取，直接使用CSV中的摘要
     
     Returns:
         paper: 处理后的论文信息字典，如果不相关则返回None
@@ -148,15 +153,72 @@ def process_relevance_and_extraction(paper, processed_papers=None, on_paper_upda
                 on_paper_removed(paper_id)
             return None
         
-        # 步骤2: 如果相关，进行摘要提取
-        print(f"  ✓ 符合研究方向，开始提取摘要...")
-        debug_logger.log(f"相关论文: {final_title[:60]} (判断依据: {explanation[:100]})", "SUCCESS")
+        # 步骤2: 如果相关，进行摘要提取（本地模式跳过此步骤）
+        print(f"  ✓ 符合研究方向", end="")
         
         # 更新论文信息
         paper['title'] = final_title
         paper['link'] = final_url
         paper['relevance_score'] = 1
         paper['relevance_explanation'] = explanation
+        
+        # 本地模式：跳过摘要提取，直接使用CSV中的摘要
+        if is_local_mode:
+            print("（本地模式：跳过摘要提取，将使用CSV中的摘要）")
+            debug_logger.log(f"相关论文: {final_title[:60]} (判断依据: {explanation[:100]}) - 本地模式，跳过摘要提取", "SUCCESS")
+            
+            # 从snippet中获取摘要（CSV中读取的）
+            snippet = paper.get('snippet', '')
+            if snippet and snippet.strip():
+                paper['full_abstract'] = snippet.strip()
+                paper['is_pdf'] = False
+                print(f"  ✓ 使用CSV中的摘要 ({len(snippet)} 字符)")
+                debug_logger.log(f"使用CSV中的摘要 ({len(snippet)} 字符)", "SUCCESS")
+                
+                # 更新状态：摘要已从CSV读取
+                if on_paper_updated:
+                    on_paper_updated(paper_id, {
+                        'status': 'abstract_extracted',
+                        'status_text': '摘要已从CSV读取，可以编辑摘要',
+                        'title': final_title,
+                        'link': final_url
+                    })
+                
+                # 显示可编辑摘要框，让用户确认
+                if on_paper_ready_for_confirmation:
+                    on_paper_ready_for_confirmation(paper_id, {
+                        'title': final_title,
+                        'abstract': snippet.strip(),
+                        'link': final_url
+                    })
+            else:
+                paper['full_abstract'] = None
+                paper['is_pdf'] = False
+                print(f"  ✗ CSV中未找到摘要信息")
+                debug_logger.log(f"CSV中未找到摘要信息", "WARNING")
+                
+                # 更新状态：摘要提取失败，但允许用户手动添加
+                if on_paper_updated:
+                    on_paper_updated(paper_id, {
+                        'status': 'abstract_extraction_failed',
+                        'status_text': 'CSV中未找到摘要，可以手动添加摘要',
+                        'title': final_title,
+                        'link': final_url
+                    })
+                
+                # 即使没有摘要，也显示可编辑摘要框，让用户手动添加
+                if on_paper_ready_for_confirmation:
+                    on_paper_ready_for_confirmation(paper_id, {
+                        'title': final_title,
+                        'abstract': '',  # 空摘要，让用户手动输入
+                        'link': final_url
+                    })
+            
+            return paper
+        
+        # 非本地模式：进行摘要提取
+        print("，开始提取摘要...")
+        debug_logger.log(f"相关论文: {final_title[:60]} (判断依据: {explanation[:100]})", "SUCCESS")
         
         # 更新状态：相关性分析通过，开始摘要提取
         if on_paper_updated:
@@ -194,14 +256,116 @@ def process_relevance_and_extraction(paper, processed_papers=None, on_paper_upda
         # 发送agent工作开始状态
         send_agent_status("摘要提取专家", "start", task=abstract_task)
         
-        with capture_crewai_output():
-            abstract_crew = Crew(
-                agents=[create_abstract_extractor_agent()],
-                tasks=[abstract_task],
-                verbose=True,
-                share_crew=False
-            )
-            abstract_result = abstract_crew.kickoff()
+        # 使用线程和超时保护来运行摘要提取，避免卡住
+        import threading
+        import queue
+        import time
+        
+        result_queue = queue.Queue()
+        exception_queue = queue.Queue()
+        start_time = time.time()
+        timeout_seconds = 180  # 3分钟超时
+        
+        def run_abstract_extraction():
+            try:
+                with capture_crewai_output():
+                    abstract_crew = Crew(
+                        agents=[create_abstract_extractor_agent()],
+                        tasks=[abstract_task],
+                        verbose=True,
+                        share_crew=False
+                    )
+                    abstract_result = abstract_crew.kickoff()
+                    result_queue.put(abstract_result)
+            except Exception as e:
+                exception_queue.put(e)
+        
+        # 启动线程运行摘要提取
+        extraction_thread = threading.Thread(target=run_abstract_extraction, daemon=True)
+        extraction_thread.start()
+        extraction_thread.join(timeout=timeout_seconds)
+        
+        # 检查是否超时
+        if extraction_thread.is_alive():
+            elapsed_time = time.time() - start_time
+            logging.warning(f"摘要提取超时（超过{timeout_seconds}秒）: {final_title[:60]}...")
+            debug_logger.log(f"摘要提取超时（超过{timeout_seconds}秒），已跳过", "WARNING")
+            
+            # 更新状态：摘要提取超时
+            if on_paper_updated:
+                on_paper_updated(paper_id, {
+                    'status': 'abstract_extraction_failed',
+                    'status_text': f'摘要提取超时（超过{timeout_seconds}秒），可以手动添加摘要',
+                    'title': final_title,
+                    'link': final_url
+                })
+            
+            # 允许用户手动添加摘要
+            if on_paper_ready_for_confirmation:
+                on_paper_ready_for_confirmation(paper_id, {
+                    'title': final_title,
+                    'abstract': '',  # 空摘要，让用户手动输入
+                    'link': final_url
+                })
+            
+            # 发送agent工作结束状态（超时）
+            send_agent_status("摘要提取专家", "end", result=None)
+            return paper
+        
+        # 检查是否有异常
+        try:
+            exc = exception_queue.get_nowait()
+            logging.error(f"摘要提取过程中出错: {str(exc)}")
+            debug_logger.log(f"摘要提取过程中出错: {str(exc)}", "ERROR")
+            
+            # 更新状态：摘要提取失败
+            if on_paper_updated:
+                on_paper_updated(paper_id, {
+                    'status': 'abstract_extraction_failed',
+                    'status_text': f'摘要提取失败: {str(exc)[:50]}...，可以手动添加摘要',
+                    'title': final_title,
+                    'link': final_url
+                })
+            
+            # 允许用户手动添加摘要
+            if on_paper_ready_for_confirmation:
+                on_paper_ready_for_confirmation(paper_id, {
+                    'title': final_title,
+                    'abstract': '',
+                    'link': final_url
+                })
+            
+            send_agent_status("摘要提取专家", "end", result=None)
+            return paper
+        except queue.Empty:
+            pass
+        
+        # 获取结果
+        try:
+            abstract_result = result_queue.get_nowait()
+        except queue.Empty:
+            logging.warning(f"摘要提取未返回结果: {final_title[:60]}...")
+            debug_logger.log(f"摘要提取未返回结果", "WARNING")
+            
+            # 更新状态：摘要提取失败
+            if on_paper_updated:
+                on_paper_updated(paper_id, {
+                    'status': 'abstract_extraction_failed',
+                    'status_text': '摘要提取未返回结果，可以手动添加摘要',
+                    'title': final_title,
+                    'link': final_url
+                })
+            
+            # 允许用户手动添加摘要
+            if on_paper_ready_for_confirmation:
+                on_paper_ready_for_confirmation(paper_id, {
+                    'title': final_title,
+                    'abstract': '',
+                    'link': final_url
+                })
+            
+            send_agent_status("摘要提取专家", "end", result=None)
+            return paper
         
         # 发送agent工作结束状态
         send_agent_status("摘要提取专家", "end", result=abstract_result)
@@ -212,6 +376,14 @@ def process_relevance_and_extraction(paper, processed_papers=None, on_paper_upda
         
         abstract_output = abstract_result.raw.strip()
         debug_logger.log(f"摘要提取输出: {abstract_output[:200]}...")
+        
+        # 尝试从输出中提取PDF文件路径（如果agent保存了PDF）
+        pdf_filename = None
+        pdf_path_match = re.search(r'\[PDF已保存到:\s*(.+?)\]', abstract_output)
+        if pdf_path_match:
+            pdf_filename = pdf_path_match.group(1).strip()
+            paper['pdf_path'] = pdf_filename
+            logging.info(f"检测到PDF文件路径: {pdf_filename}")
         
         # 解析摘要提取结果
         extraction_result = None

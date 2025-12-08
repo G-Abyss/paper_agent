@@ -17,6 +17,191 @@ import fitz  # PyMuPDF
 from crawl4ai import AsyncWebCrawler
 
 
+def normalize_title_for_dedup(title):
+    """
+    规范化论文标题用于查重，处理空格差异和大小写差异
+    
+    Args:
+        title: 原始标题
+    
+    Returns:
+        规范化后的标题（小写、去除多余空格、去除标点符号）
+    """
+    if not title:
+        return ""
+    
+    # 转换为小写
+    normalized = title.lower()
+    
+    # 去除标点符号和特殊字符（保留字母、数字和空格）
+    normalized = re.sub(r'[^\w\s]', '', normalized)
+    
+    # 将多个连续空格替换为单个空格
+    normalized = re.sub(r'\s+', ' ', normalized)
+    
+    # 去除首尾空格
+    normalized = normalized.strip()
+    
+    return normalized
+
+
+def deduplicate_papers_by_title(papers):
+    """
+    根据论文标题去除重复论文，处理空格差异和大小写差异
+    
+    Args:
+        papers: 论文列表，每个元素是包含 'title' 键的字典
+    
+    Returns:
+        (去重后的论文列表, 被删除的重复论文列表)
+    """
+    if not papers:
+        return [], []
+    
+    seen_titles = {}  # {规范化标题: 原始标题}
+    deduplicated = []
+    duplicates = []
+    
+    for paper in papers:
+        title = paper.get('title', '')
+        normalized_title = normalize_title_for_dedup(title)
+        
+        if not normalized_title:
+            # 标题为空，保留（可能是特殊情况）
+            deduplicated.append(paper)
+            continue
+        
+        if normalized_title in seen_titles:
+            # 发现重复
+            original_title = seen_titles[normalized_title]
+            duplicates.append({
+                'paper': paper,
+                'original_title': original_title,
+                'duplicate_title': title,
+                'normalized': normalized_title
+            })
+        else:
+            # 首次出现，保留
+            seen_titles[normalized_title] = title
+            deduplicated.append(paper)
+    
+    return deduplicated, duplicates
+
+
+def sanitize_filename(filename, max_length=200):
+    """
+    清理文件名，去除不允许的字符
+    
+    Args:
+        filename: 原始文件名
+        max_length: 最大长度
+    
+    Returns:
+        清理后的文件名
+    """
+    # 去除不允许的字符（Windows和Linux都不允许的字符）
+    # 不允许的字符: < > : " / \ | ? *
+    # 同时去除控制字符
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', filename)
+    
+    # 去除首尾空格和点
+    sanitized = sanitized.strip(' .')
+    
+    # 将多个空格替换为单个空格
+    sanitized = re.sub(r'\s+', ' ', sanitized)
+    
+    # 限制长度
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length]
+    
+    # 如果文件名为空，使用默认名称
+    if not sanitized:
+        sanitized = "paper"
+    
+    return sanitized
+
+
+def save_pdf_to_downloads(pdf_bytes, paper_title=None, url=None):
+    """
+    保存PDF文件到downloads文件夹
+    
+    Args:
+        pdf_bytes: PDF文件的字节内容
+        paper_title: 论文标题（用于生成文件名）
+        url: 论文URL（如果标题不可用，从URL提取文件名）
+    
+    Returns:
+        pdf_filename: 保存的PDF文件路径，如果保存失败则返回None
+    """
+    try:
+        # 验证pdf_bytes是否有效
+        if not pdf_bytes:
+            logging.warning("PDF字节内容为空，跳过保存")
+            return None
+        
+        if not isinstance(pdf_bytes, bytes):
+            logging.warning(f"PDF字节内容类型错误: {type(pdf_bytes)}，跳过保存")
+            return None
+        
+        if len(pdf_bytes) == 0:
+            logging.warning("PDF字节内容长度为0，跳过保存")
+            return None
+        
+        # 验证是否为有效的PDF文件（检查PDF文件头）
+        if len(pdf_bytes) < 4 or pdf_bytes[:4] != b'%PDF':
+            logging.warning("PDF字节内容不是有效的PDF文件（缺少PDF文件头），跳过保存")
+            return None
+        
+        downloads_dir = 'downloads'
+        os.makedirs(downloads_dir, exist_ok=True)
+        
+        # 生成文件名
+        if paper_title:
+            filename_base = sanitize_filename(paper_title)
+        elif url:
+            # 从URL提取文件名
+            from urllib.parse import urlparse, unquote
+            parsed = urlparse(url)
+            filename_from_url = os.path.basename(unquote(parsed.path))
+            if filename_from_url and filename_from_url.endswith('.pdf'):
+                filename_base = sanitize_filename(filename_from_url[:-4])
+            else:
+                # 如果无法从URL提取，使用时间戳
+                filename_base = f"paper_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        else:
+            filename_base = f"paper_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        pdf_filename = os.path.join(downloads_dir, f"{filename_base}.pdf")
+        
+        # 如果文件已存在，添加时间戳
+        if os.path.exists(pdf_filename):
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pdf_filename = os.path.join(downloads_dir, f"{filename_base}_{timestamp}.pdf")
+        
+        with open(pdf_filename, 'wb') as f:
+            f.write(pdf_bytes)
+        
+        # 验证文件是否成功写入
+        if not os.path.exists(pdf_filename):
+            logging.warning(f"PDF文件保存后不存在: {pdf_filename}")
+            return None
+        
+        file_size = os.path.getsize(pdf_filename)
+        if file_size == 0:
+            logging.warning(f"PDF文件保存后大小为0: {pdf_filename}")
+            try:
+                os.remove(pdf_filename)  # 删除空文件
+            except:
+                pass
+            return None
+        
+        logging.info(f"PDF文件已保存到: {pdf_filename} (大小: {file_size} 字节)")
+        return pdf_filename
+    except Exception as e:
+        logging.warning(f"保存PDF文件失败: {str(e)}")
+        return None
+
+
 def load_papers_from_csv(csv_path, title_col=0, abstract_col=2, link_col=None):
     """
     从CSV文件加载论文信息
@@ -177,7 +362,7 @@ def extract_real_url_from_redirect(url):
     return None
 
 
-def check_content_type_pdf(url, timeout=10):
+def check_content_type_pdf(url, timeout=30):
     """
     通过HEAD请求检查URL的Content-Type是否为PDF
     返回: (is_pdf, real_url) - real_url是最终跳转后的URL
@@ -199,15 +384,23 @@ def check_content_type_pdf(url, timeout=10):
         if is_pdf_url(real_url):
             return True, real_url
             
+    except requests.exceptions.Timeout:
+        logging.debug(f"HEAD请求检查超时（超过{timeout}秒）: {url}")
     except Exception as e:
         logging.debug(f"HEAD请求检查失败 {url}: {str(e)}")
     return False, None
 
 
-async def fetch_fulltext_from_url_async(url, timeout=30):
+async def fetch_fulltext_from_url_async(url, timeout=180, paper_title=None, save_pdf=True):
     """
     使用 Crawl4AI 从URL获取全文内容（异步版本）
-    返回: (content, is_pdf, pdf_bytes)
+    返回: (content, is_pdf, pdf_bytes, pdf_filename)
+    
+    Args:
+        url: 论文URL
+        timeout: 超时时间
+        paper_title: 论文标题（用于保存PDF文件）
+        save_pdf: 是否保存PDF到downloads文件夹
     """
     try:
         # 步骤1: 检查URL参数中是否包含PDF链接（处理跳转链接）
@@ -231,13 +424,24 @@ async def fetch_fulltext_from_url_async(url, timeout=30):
                 # 再次确认Content-Type
                 content_type = response.headers.get('Content-Type', '').lower()
                 if 'application/pdf' in content_type or 'pdf' in content_type:
-                    return None, True, response.content
+                    pdf_bytes = response.content
+                    pdf_filename = None
+                    if save_pdf:
+                        pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                    return None, True, pdf_bytes, pdf_filename
                 # 检查内容开头是否为PDF文件头（%PDF）
                 if response.content[:4] == b'%PDF':
-                    return None, True, response.content
+                    pdf_bytes = response.content
+                    pdf_filename = None
+                    if save_pdf:
+                        pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                    return None, True, pdf_bytes, pdf_filename
+            except requests.exceptions.Timeout:
+                logging.warning(f"下载PDF超时（超过{timeout}秒）: {url}")
+                return None, False, None, None
             except Exception as e:
                 logging.error(f"下载PDF失败 {url}: {str(e)}")
-                return None, False, None
+                return None, False, None, None
         
         # 步骤3: 检查URL路径是否为PDF
         if is_pdf_url(url):
@@ -251,13 +455,24 @@ async def fetch_fulltext_from_url_async(url, timeout=30):
                 # 检查Content-Type
                 content_type = response.headers.get('Content-Type', '').lower()
                 if 'application/pdf' in content_type or 'pdf' in content_type:
-                    return None, True, response.content
+                    pdf_bytes = response.content
+                    pdf_filename = None
+                    if save_pdf:
+                        pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                    return None, True, pdf_bytes, pdf_filename
                 # 检查内容开头是否为PDF文件头（%PDF）
                 if response.content[:4] == b'%PDF':
-                    return None, True, response.content
+                    pdf_bytes = response.content
+                    pdf_filename = None
+                    if save_pdf:
+                        pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                    return None, True, pdf_bytes, pdf_filename
+            except requests.exceptions.Timeout:
+                logging.warning(f"下载PDF超时（超过{timeout}秒）: {url}")
+                return None, False, None, None
             except Exception as e:
                 logging.error(f"下载PDF失败 {url}: {str(e)}")
-                return None, False, None
+                return None, False, None, None
         
         # 使用 Crawl4AI 获取网页内容
         try:
@@ -284,7 +499,13 @@ async def fetch_fulltext_from_url_async(url, timeout=30):
                                 pdf_response.raise_for_status()
                                 # 再次确认是PDF
                                 if pdf_response.content[:4] == b'%PDF':
-                                    return None, True, pdf_response.content
+                                    pdf_bytes = pdf_response.content
+                                    pdf_filename = None
+                                    if save_pdf:
+                                        pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                                    return None, True, pdf_bytes, pdf_filename
+                            except requests.exceptions.Timeout:
+                                logging.warning(f"下载PDF超时（超过{timeout}秒）: {url}")
                             except:
                                 pass
                         
@@ -299,15 +520,19 @@ async def fetch_fulltext_from_url_async(url, timeout=30):
                                     # 确实是PDF，完整下载
                                     full_response = requests.get(url, timeout=timeout, allow_redirects=True)
                                     full_response.raise_for_status()
-                                    return None, True, full_response.content
+                                    pdf_bytes = full_response.content
+                                    pdf_filename = None
+                                    if save_pdf:
+                                        pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                                    return None, True, pdf_bytes, pdf_filename
                             except:
                                 pass
                         
                         # 返回HTML内容
-                        return result.html, False, None
+                        return result.html, False, None, None
                     else:
                         logging.warning(f"Crawl4AI获取成功但无HTML内容 {url}")
-                        return await fetch_fulltext_fallback(url, timeout)
+                        return await fetch_fulltext_fallback(url, timeout, paper_title, save_pdf)
                 else:
                     error_msg = '未知错误'
                     if hasattr(result, 'error_message'):
@@ -316,23 +541,23 @@ async def fetch_fulltext_from_url_async(url, timeout=30):
                         error_msg = str(result.error)
                     logging.warning(f"Crawl4AI获取失败 {url}: {error_msg}")
                     # 如果Crawl4AI失败，尝试使用requests作为备选
-                    return await fetch_fulltext_fallback(url, timeout)
+                    return await fetch_fulltext_fallback(url, timeout, paper_title, save_pdf)
         except ImportError:
             # 如果Crawl4AI未安装，使用备选方案
             logging.warning(f"Crawl4AI未安装，使用备选方案获取 {url}")
-            return await fetch_fulltext_fallback(url, timeout)
+            return await fetch_fulltext_fallback(url, timeout, paper_title, save_pdf)
         except Exception as e:
             logging.warning(f"Crawl4AI异常 {url}: {str(e)}")
             # 如果Crawl4AI异常，尝试使用requests作为备选
-            return await fetch_fulltext_fallback(url, timeout)
+            return await fetch_fulltext_fallback(url, timeout, paper_title, save_pdf)
                 
     except Exception as e:
         logging.error(f"获取URL内容失败 {url}: {str(e)}")
         # 尝试使用requests作为备选
-        return await fetch_fulltext_fallback(url, timeout)
+        return await fetch_fulltext_fallback(url, timeout, paper_title, save_pdf)
 
 
-async def fetch_fulltext_fallback(url, timeout=30):
+async def fetch_fulltext_fallback(url, timeout=180, paper_title=None, save_pdf=True):
     """
     备选方案：使用requests获取网页内容
     """
@@ -357,18 +582,31 @@ async def fetch_fulltext_fallback(url, timeout=30):
             is_pdf = True
         
         if is_pdf:
-            return None, True, response.content
+            pdf_bytes = response.content
+            pdf_filename = None
+            if save_pdf:
+                pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+            return None, True, pdf_bytes, pdf_filename
         else:
-            return response.text, False, None
+            return response.text, False, None, None
+    except requests.exceptions.Timeout:
+        logging.warning(f"备选方案下载超时（超过{timeout}秒）: {url}")
+        return None, False, None, None
     except Exception as e:
         logging.error(f"备选方案也失败 {url}: {str(e)}")
-        return None, False, None
+        return None, False, None, None
 
 
-def fetch_fulltext_from_url(url, timeout=30):
+def fetch_fulltext_from_url(url, timeout=180, paper_title=None, save_pdf=True):
     """
     从URL获取全文内容（同步包装器）
-    返回: (content, is_pdf, pdf_bytes)
+    返回: (content, is_pdf, pdf_bytes, pdf_filename)
+    
+    Args:
+        url: 论文URL
+        timeout: 超时时间
+        paper_title: 论文标题（用于保存PDF文件）
+        save_pdf: 是否保存PDF到downloads文件夹
     """
     try:
         # 运行异步函数
@@ -383,7 +621,7 @@ def fetch_fulltext_from_url(url, timeout=30):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        result = loop.run_until_complete(fetch_fulltext_from_url_async(url, timeout))
+        result = loop.run_until_complete(fetch_fulltext_from_url_async(url, timeout, paper_title, save_pdf))
         
         # 清理未完成的任务
         pending = asyncio.all_tasks(loop)
@@ -430,12 +668,16 @@ def fetch_fulltext_from_url(url, timeout=30):
                 is_pdf = is_pdf_url(url) or is_pdf_url(response.url)
             
             if is_pdf:
-                return None, True, response.content
+                pdf_bytes = response.content
+                pdf_filename = None
+                if save_pdf:
+                    pdf_filename = save_pdf_to_downloads(pdf_bytes, paper_title, url)
+                return None, True, pdf_bytes, pdf_filename
             else:
-                return response.text, False, None
+                return response.text, False, None, None
         except Exception as e2:
             logging.error(f"所有方法都失败 {url}: {str(e2)}")
-            return None, False, None
+            return None, False, None, None
 
 
 def extract_abstract_from_html(html_content):

@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Web服务器 - 为Paper Summarizer提供Web界面和实时通信
+
+主要修改点：
+- 优化代码结构和注释
+- 清理冗余代码
 """
 
-from flask import Flask, send_from_directory, request, jsonify
+from flask import Flask, send_from_directory, request, jsonify, send_file
 from flask_socketio import SocketIO, emit
 import os
 import sys
@@ -14,6 +18,10 @@ import json
 import time
 from datetime import datetime
 import webbrowser
+import requests
+from utils.model_config import load_models, save_models, validate_model_config, get_active_model
+from utils.email_storage import get_email_summary, load_emails
+from utils.email_utils import connect_gmail
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'paper-summarizer-secret-key'
@@ -28,7 +36,7 @@ running_status = {
     'is_running': False,
     'papers': {},
     'files': [],
-    'waiting_confirmation': False,  # 是否等待人工确认（批量模式，已弃用）
+    'waiting_confirmation': False,  # 是否等待人工确认
     'confirmed_abstracts': {},  # 已确认的摘要 {paper_id: abstract_text}
     'confirmation_papers': {}  # 等待确认的论文数据
 }
@@ -84,7 +92,7 @@ def emit_status(status):
 
 def emit_waiting_confirmation(papers_data):
     """
-    发送等待人工确认消息（批量模式，已弃用）
+    发送等待人工确认消息（批量模式）
     
     Args:
         papers_data: 论文数据字典，格式为 {paper_id: {'title': ..., 'abstract': ..., 'link': ...}}
@@ -156,7 +164,32 @@ def start_task():
         return jsonify({'success': False, 'error': '任务正在运行中'})
     
     try:
-        config = request.json
+        # 获取配置（支持JSON和FormData两种方式）
+        if request.content_type and 'application/json' in request.content_type:
+            config = request.json
+        else:
+            # FormData方式（用于文件上传）
+            config_str = request.form.get('config', '{}')
+            try:
+                config = json.loads(config_str)
+            except json.JSONDecodeError as e:
+                return jsonify({'success': False, 'error': f'配置解析失败: {str(e)}'}), 400
+            
+            # 处理文件上传（本地模式）
+            if 'csv_file' in request.files:
+                csv_file = request.files['csv_file']
+                if csv_file.filename:
+                    # 保存文件到工作目录
+                    upload_dir = os.getcwd()
+                    file_path = os.path.join(upload_dir, csv_file.filename)
+                    csv_file.save(file_path)
+                    # 设置文件路径到配置中
+                    config['csv_path'] = csv_file.filename
+        
+        # 验证配置中的mode字段
+        if 'mode' not in config:
+            return jsonify({'success': False, 'error': '配置中缺少mode字段'}), 400
+        
         running_status['is_running'] = True
         running_status['papers'] = {}
         running_status['files'] = []
@@ -202,10 +235,140 @@ def open_file():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/download_file', methods=['GET'])
+def download_file():
+    """下载文件"""
+    try:
+        file_path = request.args.get('path')
+        if not file_path:
+            return jsonify({'success': False, 'error': '未指定文件路径'}), 400
+        
+        # 转换为绝对路径
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(os.getcwd(), file_path)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+        
+        # 安全检查：只允许下载 reports/ 和 downloads/ 目录下的文件
+        base_dir = os.path.abspath(os.getcwd())
+        abs_file_path = os.path.abspath(file_path)
+        
+        reports_dir = os.path.abspath(os.path.join(base_dir, 'reports'))
+        downloads_dir = os.path.abspath(os.path.join(base_dir, 'downloads'))
+        
+        if not (abs_file_path.startswith(reports_dir) or abs_file_path.startswith(downloads_dir)):
+            return jsonify({'success': False, 'error': '不允许访问该路径'}), 403
+        
+        return send_file(file_path, as_attachment=True, download_name=os.path.basename(abs_file_path))
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/status', methods=['GET'])
 def get_status():
     """获取当前状态"""
     return jsonify(running_status)
+
+@app.route('/api/models', methods=['GET'])
+def get_models():
+    """获取所有模型配置"""
+    try:
+        models = load_models()
+        return jsonify({'success': True, 'models': models})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/models', methods=['POST'])
+def save_models_api():
+    """保存模型配置"""
+    try:
+        data = request.json
+        models = data.get('models', [])
+        
+        if not isinstance(models, list):
+            return jsonify({'success': False, 'error': '模型配置必须是列表格式'})
+        
+        # 验证所有模型配置
+        for model in models:
+            if not validate_model_config(model):
+                return jsonify({'success': False, 'error': f'模型配置无效: {model.get("name", "Unknown")}'})
+        
+        # 生成ID（如果没有）
+        for i, model in enumerate(models):
+            if 'id' not in model or not model['id']:
+                model['id'] = f"model_{i}_{int(time.time())}"
+        
+        if save_models(models):
+            return jsonify({'success': True, 'message': '模型配置保存成功'})
+        else:
+            return jsonify({'success': False, 'error': '保存模型配置失败'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/models/test', methods=['POST'])
+def test_model():
+    """测试模型连通性"""
+    try:
+        data = request.json
+        model = data.get('model')
+        
+        if not model:
+            return jsonify({'success': False, 'error': '未提供模型配置'})
+        
+        if not validate_model_config(model):
+            return jsonify({'success': False, 'error': '模型配置无效'})
+        
+        model_type = model.get('type')
+        base_url = model.get('base_url') or model.get('api_base', '')
+        
+        if model_type == 'local':
+            # 测试本地Ollama连接
+            try:
+                # 尝试访问Ollama的API端点
+                test_url = f"{base_url.rstrip('/')}/api/tags"
+                response = requests.get(test_url, timeout=5)
+                if response.status_code == 200:
+                    return jsonify({'success': True, 'message': '本地模型连接成功'})
+                else:
+                    return jsonify({'success': False, 'error': f'连接失败: HTTP {response.status_code}'})
+            except requests.exceptions.Timeout:
+                return jsonify({'success': False, 'error': '连接超时，请检查URL和网络'})
+            except requests.exceptions.ConnectionError:
+                return jsonify({'success': False, 'error': '无法连接到服务器，请检查URL'})
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'连接失败: {str(e)}'})
+        
+        elif model_type == 'remote':
+            # 测试远程API连接
+            api_key = model.get('api_key', '')
+            api_base = base_url or model.get('api_base', '')
+            
+            # 这里可以根据不同的API提供商进行测试
+            # 例如OpenAI、Anthropic等
+            try:
+                # 简单的连接测试：尝试访问API基础URL
+                if api_base:
+                    test_url = f"{api_base.rstrip('/')}/v1/models"
+                    headers = {'Authorization': f'Bearer {api_key}'}
+                    response = requests.get(test_url, headers=headers, timeout=10)
+                    if response.status_code in [200, 401, 403]:  # 401/403表示连接成功但认证失败
+                        return jsonify({'success': True, 'message': '远程模型连接成功（认证可能需要检查）'})
+                    else:
+                        return jsonify({'success': False, 'error': f'连接失败: HTTP {response.status_code}'})
+                else:
+                    return jsonify({'success': False, 'error': '未提供API基础URL'})
+            except requests.exceptions.Timeout:
+                return jsonify({'success': False, 'error': '连接超时，请检查URL和网络'})
+            except requests.exceptions.ConnectionError:
+                return jsonify({'success': False, 'error': '无法连接到服务器，请检查URL'})
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'连接失败: {str(e)}'})
+        
+        else:
+            return jsonify({'success': False, 'error': '不支持的模型类型'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/confirm_abstracts', methods=['POST'])
 def confirm_abstracts():
@@ -234,6 +397,162 @@ def confirm_abstracts():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/api/emails', methods=['GET'])
+def get_emails():
+    """获取邮件摘要信息（保留用于兼容性）"""
+    try:
+        from utils.email_storage import get_email_summary
+        summary = get_email_summary()
+        return jsonify({'success': True, 'data': summary})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/emails/all', methods=['GET'])
+def get_all_emails():
+    """获取所有邮件详细信息"""
+    try:
+        from utils.email_storage import load_emails
+        emails_data = load_emails()
+        
+        # 计算论文总数
+        total_papers = sum(email.get('paper_count', 0) for email in emails_data.get('emails', []))
+        emails_data['total_papers'] = total_papers
+        
+        return jsonify({'success': True, 'data': emails_data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/emails/update', methods=['POST'])
+def update_emails():
+    """手动更新邮件信息（同步远程邮箱到本地）"""
+    try:
+        data = request.get_json() or {}
+        start_days = int(data.get('start_days', 30))  # 默认前30天，确保覆盖足够的时间范围
+        end_days = int(data.get('end_days', 0))  # 默认到今天
+        
+        # 连接邮箱
+        mail = connect_gmail()
+        
+        try:
+            # 使用同步函数（不限制数量，获取所有符合条件的邮件）
+            from utils.email_storage import sync_remote_emails_to_local
+            sync_result = sync_remote_emails_to_local(mail, start_days=start_days, end_days=end_days)
+            
+            return jsonify({
+                'success': True,
+                'message': sync_result['message'],
+                'updated_count': sync_result['updated_count'],
+                'total_count': sync_result['total_count']
+            })
+        finally:
+            # 关闭连接
+            try:
+                mail.close()
+                mail.logout()
+            except:
+                pass
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/email/config', methods=['GET'])
+def get_email_config():
+    """获取邮箱配置"""
+    try:
+        from utils.email_config import load_email_config
+        config = load_email_config()
+        if config:
+            # 返回配置信息（密码字段为空，让用户重新输入）
+            return jsonify({
+                'success': True,
+                'config': {
+                    'user': config.get('user', ''),
+                    'imap_server': config.get('imap_server', 'imap.qq.com'),
+                    'imap_port': config.get('imap_port', 993),
+                    'password': ''  # 不返回真实密码，前端显示为空
+                }
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'config': None
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/email/config', methods=['POST'])
+def save_email_config():
+    """保存邮箱配置"""
+    try:
+        data = request.get_json() or {}
+        user = data.get('user', '').strip()
+        password = data.get('password', '').strip()
+        imap_server = data.get('imap_server', 'imap.qq.com').strip()
+        imap_port = int(data.get('imap_port', 993))
+        
+        if not user:
+            return jsonify({'success': False, 'error': '邮箱账号不能为空'}), 400
+        
+        # 如果密码为空或为占位符，尝试从现有配置中获取密码
+        if not password or password == '********':
+            from utils.email_config import load_email_config
+            existing_config = load_email_config()
+            if existing_config and existing_config.get('user') == user:
+                # 使用现有密码
+                password = existing_config.get('password', '')
+            else:
+                return jsonify({'success': False, 'error': '授权码/密码不能为空'}), 400
+        
+        from utils.email_config import save_email_config
+        if save_email_config(user, password, imap_server, imap_port):
+            return jsonify({'success': True, 'message': '配置已保存'})
+        else:
+            return jsonify({'success': False, 'error': '保存配置失败'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/email/test', methods=['POST'])
+def test_email_connection():
+    """测试邮箱连接"""
+    try:
+        data = request.get_json() or {}
+        user = data.get('user', '').strip()
+        password = data.get('password', '').strip()
+        imap_server = data.get('imap_server', 'imap.qq.com').strip()
+        imap_port = int(data.get('imap_port', 993))
+        
+        if not user:
+            return jsonify({'success': False, 'error': '邮箱账号不能为空'}), 400
+        
+        # 如果密码为空或为占位符，尝试从现有配置中获取密码
+        if not password or password == '********':
+            from utils.email_config import load_email_config
+            existing_config = load_email_config()
+            if existing_config and existing_config.get('user') == user:
+                # 使用现有密码
+                password = existing_config.get('password', '')
+            else:
+                return jsonify({'success': False, 'error': '授权码/密码不能为空'}), 400
+        
+        # 临时使用提供的配置进行连接测试
+        import ssl
+        import imaplib
+        
+        try:
+            context = ssl.create_default_context()
+            mail = imaplib.IMAP4_SSL(imap_server, port=imap_port, ssl_context=context)
+            mail.sock.settimeout(10)  # 设置10秒超时
+            mail.login(user, password)
+            mail.close()
+            mail.logout()
+            return jsonify({'success': True, 'message': '连接成功'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'连接失败: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @socketio.on('connect')
 def handle_connect():
     """Socket.IO连接"""
@@ -257,22 +576,35 @@ def run_summarizer_task(config):
         paper_confirmation_papers.clear()
         confirmed_papers.clear()
         
-        # 设置环境变量
+        # 设置环境变量（必须在导入main之前设置）
         if config.get('mode') == 'local':
             os.environ['LOCAL'] = '1'
             os.environ['CSV_FILE_PATH'] = config.get('csv_path', 'local_papers.csv')
+            emit_log('info', f'本地模式：CSV文件路径 = {config.get("csv_path", "local_papers.csv")}')
         else:
             os.environ['LOCAL'] = '0'
             os.environ['START_DAYS'] = str(config.get('start_days', 1))
             os.environ['END_DAYS'] = str(config.get('end_days', 0))
+            emit_log('info', f'远程模式：日期范围 = 前{config.get("start_days", 1)}天到前{config.get("end_days", 0)}天')
         
         # 设置研究方向关键词
         keywords = config.get('keywords', '机器人学、控制理论、遥操作、机器人动力学、力控、机器学习')
         os.environ['RESEARCH_KEYWORDS'] = keywords
         
         emit_log('info', '开始处理任务...')
+        emit_log('info', f'配置信息：mode={config.get("mode")}, csv_path={config.get("csv_path", "N/A")}')
         
-        # 导入并运行主程序
+        # 重新加载config模块以确保使用最新的环境变量
+        import importlib
+        if 'config' in sys.modules:
+            importlib.reload(sys.modules['config'])
+        
+        # 重新加载main模块以确保使用最新的config值
+        # 注意：需要先删除已导入的main模块，然后重新导入
+        if 'main' in sys.modules:
+            del sys.modules['main']
+        
+        # 重新导入main（会使用重新加载后的config模块）
         from main import main
         
         # 运行主程序（带回调）

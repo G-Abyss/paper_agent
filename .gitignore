@@ -43,6 +43,7 @@ reports/
 *.md
 !README.md
 !LICENSE.md
+*.csv
 
 # 日志文件
 *.log
@@ -51,3 +52,9 @@ reports/
 .DS_Store
 Thumbs.db
 
+# 配置文件
+model_config.json
+
+# 本地邮件数据
+data/emails.json
+email_config.json

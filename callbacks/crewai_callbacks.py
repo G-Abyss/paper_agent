@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 CrewAI回调
+
+主要修改点：
+- 删除未使用的导入（DEBUG_DIR）
+- 优化代码结构和注释
 """
 
 import os
@@ -10,9 +14,7 @@ import re
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from config import DEBUG_DIR
 from utils.text_utils import remove_ansi_codes
-# 延迟导入，避免循环导入（在函数内部导入）
 
 
 # 配置 CrewAI 专用日志输出到文件

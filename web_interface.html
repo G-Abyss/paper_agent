@@ -135,6 +135,12 @@
             backdrop-filter: blur(5px);
         }
 
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .panel-header h2 {
             font-family: 'Rajdhani', sans-serif;
             font-size: 16px;
@@ -144,6 +150,28 @@
             margin: 0;
             text-transform: uppercase;
             text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .settings-btn {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-size: 18px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+        }
+
+        .settings-btn:hover {
+            background: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .settings-btn:active {
+            transform: translateY(0);
         }
 
         .panel-content {
@@ -269,6 +297,42 @@
             box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
         }
 
+        .file-select-button {
+            width: 100%;
+            padding: 10px 15px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+            position: relative;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .file-select-button:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .file-select-button:active {
+            transform: translateY(0);
+        }
+
+        #file-select-text {
+            pointer-events: none;
+        }
+
         .date-inputs {
             display: flex;
             gap: 10px;
@@ -331,6 +395,32 @@
 
         .run-button.waiting:hover::before {
             content: '▶';
+        }
+
+        .email-button {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 8px;
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .email-button:hover {
+            background: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .email-button:active {
+            transform: translateY(0);
         }
 
         @keyframes pulse {
@@ -660,18 +750,161 @@
             gap: 10px;
         }
 
-        .file-item {
+        .paper-result-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .file-list-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .file-list-header {
+            margin-bottom: 15px;
+        }
+
+        .file-list-header h3 {
+            font-size: 16px;
+            color: var(--neon-cyan);
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .paper-result-item {
             background: rgba(0, 217, 255, 0.05);
             border: 1px solid rgba(0, 217, 255, 0.3);
-            border-radius: 6px;
-            padding: 12px;
+            border-radius: 8px;
+            padding: 15px;
             cursor: pointer;
             transition: all 0.3s;
             position: relative;
             overflow: hidden;
+        }
+
+        .paper-result-item:hover {
+            background: rgba(0, 217, 255, 0.15);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
+            transform: translateX(5px);
+        }
+
+        .paper-result-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .paper-result-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .paper-result-score {
+            color: var(--neon-cyan);
+            font-weight: 600;
+        }
+
+        .paper-result-score.high-value {
+            color: var(--neon-green);
+        }
+
+        .file-item {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.3s;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-item:hover {
+            background: rgba(0, 217, 255, 0.15);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .file-item-content {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .file-item-icon {
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        .file-item-info {
+            flex: 1;
+        }
+
+        .file-item-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 6px;
+            word-break: break-word;
+        }
+
+        .file-item-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .file-item-type {
+            color: var(--neon-cyan);
+        }
+
+        .file-item-size {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .file-item-time {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .file-item-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .file-action-btn {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 4px;
+            padding: 6px 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            color: var(--neon-cyan);
+        }
+
+        .file-action-btn:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
         }
 
         .file-item::before {
@@ -735,6 +968,815 @@
         .hidden {
             display: none !important;
         }
+
+        /* 设置弹窗 */
+        .settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            backdrop-filter: blur(5px);
+        }
+
+        .settings-modal.active {
+            display: flex !important;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .settings-content {
+            background: var(--dark-panel);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(0, 217, 255, 0.5);
+            position: relative;
+        }
+
+        .settings-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .settings-header h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            margin: 0;
+            text-transform: uppercase;
+        }
+
+        .settings-close {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-size: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .settings-close:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .settings-body {
+            padding: 20px;
+        }
+
+        .model-list {
+            margin-bottom: 20px;
+        }
+
+        .model-item {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .model-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .model-item-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+        }
+
+        .model-item-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-test, .btn-delete {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .btn-test {
+            background: rgba(0, 217, 255, 0.1);
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+        }
+
+        .btn-test:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .btn-delete {
+            background: rgba(255, 0, 84, 0.1);
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .btn-delete:hover {
+            background: rgba(255, 0, 84, 0.2);
+        }
+
+        .btn-collapse {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 4px;
+            color: var(--neon-cyan);
+            font-size: 12px;
+            padding: 4px 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 30px;
+        }
+
+        .btn-collapse:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .model-title-input {
+            background: transparent !important;
+            border: none !important;
+            border-bottom: 1px solid var(--neon-cyan) !important;
+            color: var(--neon-cyan) !important;
+            font-family: 'Rajdhani', sans-serif !important;
+            font-size: 16px !important;
+            font-weight: 600 !important;
+            padding: 4px 8px !important;
+            flex: 1;
+            transition: all 0.3s;
+        }
+
+        .model-title-input:focus {
+            outline: none;
+            border-bottom-color: var(--neon-purple) !important;
+            box-shadow: 0 2px 0 rgba(123, 44, 191, 0.5) !important;
+        }
+
+        .model-item-content {
+            animation: slideDown 0.3s ease;
+        }
+
+        .default-model-radio {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .default-model-radio input[type="radio"] {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--neon-cyan);
+            border-radius: 50%;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 0;
+        }
+
+        .default-model-radio input[type="radio"]:checked {
+            background: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .default-model-radio input[type="radio"]:checked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 6px;
+            height: 6px;
+            background: var(--dark-bg);
+            border-radius: 50%;
+        }
+
+        .default-model-radio .radio-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 500;
+        }
+
+        .default-model-radio:hover .radio-label {
+            color: var(--neon-cyan);
+        }
+
+        .enable-model-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .enable-model-checkbox input[type="checkbox"] {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--neon-cyan);
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 0;
+        }
+
+        .enable-model-checkbox input[type="checkbox"]:checked {
+            background: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .enable-model-checkbox input[type="checkbox"]:checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--dark-bg);
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .enable-model-checkbox .checkbox-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 500;
+        }
+
+        .enable-model-checkbox:hover .checkbox-label {
+            color: var(--neon-cyan);
+        }
+
+        .model-form-group {
+            margin-bottom: 15px;
+        }
+
+        .model-form-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            margin-bottom: 5px;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .model-form-group input,
+        .model-form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+        }
+
+        .model-form-group input:focus,
+        .model-form-group select:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            background: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .btn-add-model {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 2px dashed var(--neon-cyan);
+            border-radius: 8px;
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .btn-add-model:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-style: solid;
+        }
+
+        .settings-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn-save {
+            padding: 10px 20px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-save:hover {
+            background: rgba(0, 217, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
+        }
+
+        .test-status {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .test-status.success {
+            background: rgba(0, 255, 0, 0.2);
+            color: #0f0;
+        }
+
+        .test-status.error {
+            background: rgba(255, 0, 84, 0.2);
+            color: var(--neon-red);
+        }
+
+        .test-status.testing {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--neon-orange);
+        }
+
+        /* 邮件信息模态框 */
+        .email-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            backdrop-filter: blur(5px);
+        }
+
+        .email-modal.active {
+            display: flex !important;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .email-settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10001;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .email-settings-modal.active {
+            display: flex !important;
+        }
+
+        .email-settings-content {
+            background: var(--dark-panel);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(0, 217, 255, 0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .email-settings-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .email-settings-header h3 {
+            margin: 0;
+            color: var(--neon-cyan);
+            font-size: 18px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+        }
+
+        .email-settings-close {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-size: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .email-settings-close:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .email-settings-body {
+            padding: 20px;
+        }
+
+        .email-settings-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-group .input-field {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .form-group .input-field:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .form-hint {
+            background: rgba(0, 217, 255, 0.05);
+            border-left: 3px solid var(--neon-cyan);
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .form-hint p {
+            margin: 0 0 8px 0;
+            color: var(--neon-cyan);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .form-hint ul {
+            margin: 0;
+            padding-left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .form-hint li {
+            margin-bottom: 4px;
+        }
+
+        .email-settings-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .email-content {
+            background: var(--dark-panel);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 30px rgba(0, 217, 255, 0.5);
+            position: relative;
+        }
+
+        .email-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .email-header h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            margin: 0;
+            text-transform: uppercase;
+        }
+
+        .email-close {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-size: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .email-close:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .email-body {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .email-summary {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .email-summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+        }
+
+        .email-summary-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .email-summary-label {
+            color: var(--neon-cyan);
+            font-weight: 600;
+        }
+
+        .email-list {
+            margin-top: 20px;
+        }
+
+        .email-item {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .email-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .email-item-subject {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+        }
+
+        .email-item-date {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .email-pagination {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pagination-btn {
+            padding: 8px 16px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .pagination-info {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            margin: 0 10px;
+        }
+
+        .email-item-papers {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .email-item-papers-title {
+            font-size: 12px;
+            color: var(--neon-cyan);
+            margin-bottom: 8px;
+        }
+
+        .email-paper-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 3px solid var(--neon-cyan);
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+        }
+
+        .email-paper-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .email-paper-title {
+            font-size: 13px;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .email-paper-title-link {
+            font-size: 13px;
+            color: var(--neon-cyan);
+            text-decoration: none;
+            display: block;
+            transition: all 0.3s;
+        }
+
+        .email-paper-title-link:hover {
+            color: #fff;
+            text-decoration: underline;
+            text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .email-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .email-footer-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn-settings {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 16px;
+            color: var(--neon-cyan);
+        }
+
+        .btn-settings:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
+        }
+
+        .email-settings-footer .btn-test,
+        .email-settings-footer .btn-save {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid;
+        }
+
+        .email-settings-footer .btn-test {
+            background: rgba(0, 217, 255, 0.1);
+            border-color: rgba(0, 217, 255, 0.3);
+            color: var(--neon-cyan);
+        }
+
+        .email-settings-footer .btn-test:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
+        }
+
+        .email-settings-footer .btn-test:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .email-settings-footer .btn-save {
+            background: rgba(0, 255, 100, 0.1);
+            border-color: rgba(0, 255, 100, 0.3);
+            color: var(--neon-green);
+        }
+
+        .email-settings-footer .btn-save:hover {
+            background: rgba(0, 255, 100, 0.2);
+            border-color: var(--neon-green);
+            box-shadow: 0 0 10px rgba(0, 255, 100, 0.4);
+        }
+
+        .email-settings-footer .btn-save:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-update {
+            padding: 10px 20px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-update:hover {
+            background: rgba(0, 217, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn-update:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -768,12 +1810,31 @@
                     </div>
                 </div>
                 <div class="option-group" id="local-options">
-                    <label>CSV文件路径</label>
-                    <input type="text" class="input-field" id="csv-path" 
-                           placeholder="例如: local_papers.csv" 
-                           value="local_papers.csv">
+                    <label>选择CSV文件</label>
+                    <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0, 217, 255, 0.05); border-left: 3px solid var(--neon-cyan); border-radius: 4px;">
+                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 12px; line-height: 1.6;">
+                            <strong style="color: var(--neon-cyan);">CSV文件格式要求：</strong><br>
+                            第一列：论文名称<br>
+                            第二列：网站链接<br>
+                            第三列：摘要
+                        </div>
+                    </div>
+                    <div style="position: relative;">
+                        <div class="file-select-button" id="file-select-button">
+                            <span id="file-select-text">📁 点击选择CSV文件</span>
+                            <input type="file" class="input-field" id="csv-file" 
+                                   accept=".csv" 
+                                   style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;">
+                        </div>
+                    </div>
+                    <div id="csv-file-name" style="margin-top: 8px; color: rgba(255, 255, 255, 0.7); font-size: 12px;">
+                        未选择文件
+                    </div>
                 </div>
                 <div class="option-group hidden" id="remote-options">
+                    <button class="email-button" id="email-btn" style="width: 100%; margin-bottom: 15px;">
+                        📧 邮箱
+                    </button>
                     <label>日期范围</label>
                     <div class="date-inputs">
                         <div style="flex: 1;">
@@ -798,6 +1859,7 @@
         <div class="center-panel panel">
             <div class="panel-header">
                 <h2>对话</h2>
+                <button class="settings-btn" id="settings-btn" title="模型设置" onclick="openSettingsModal()">⚙️</button>
             </div>
             <div class="panel-content">
                 <div class="log-container" id="log-container">
@@ -815,7 +1877,20 @@
                 <h2>生成</h2>
             </div>
             <div class="panel-content">
-                <div class="file-list" id="file-list">
+                <!-- 论文列表区域 -->
+                <div class="paper-result-list" id="paper-result-list">
+                    <div style="text-align: center; color: rgba(255, 255, 255, 0.5); padding: 40px 20px;">
+                        等待处理论文...
+                    </div>
+                </div>
+                <!-- 文件列表区域 -->
+                <div class="file-list-section" id="file-list-section" style="display: none;">
+                    <div class="file-list-header">
+                        <h3>生成的文件</h3>
+                    </div>
+                    <div class="file-list" id="file-list">
+                        <!-- 文件列表将在这里动态生成 -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -835,7 +1910,6 @@
         const runBtn = document.getElementById('run-btn');
         const paperList = document.getElementById('paper-list');
         const logContainer = document.getElementById('log-container');
-        const fileList = document.getElementById('file-list');
 
         // 设置默认日期（昨天和今天）
         function setDefaultDates() {
@@ -865,18 +1939,29 @@
         // 初始化时设置默认日期
         setDefaultDates();
         
-        // 模式切换
-        modeRadios.forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                if (e.target.value === 'local') {
+        // 模式切换函数
+        function updateModeDisplay() {
+            const checkedMode = document.querySelector('input[name="mode"]:checked');
+            if (checkedMode) {
+                if (checkedMode.value === 'local') {
                     localOptions.classList.remove('hidden');
                     remoteOptions.classList.add('hidden');
                 } else {
                     localOptions.classList.add('hidden');
                     remoteOptions.classList.remove('hidden');
                 }
+            }
+        }
+        
+        // 模式切换事件监听
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                updateModeDisplay();
             });
         });
+        
+        // 初始化时根据默认选中的模式设置显示状态
+        updateModeDisplay();
 
         // 连接Socket.IO
         function connectWebSocket() {
@@ -918,9 +2003,14 @@
                     break;
                 case 'paper_updated':
                     updatePaper(data.paper_id, data.paper);
+                    // 如果论文处理成功，添加到生成列表
+                    if (data.paper.status === 'success' && data.paper.score !== undefined && data.paper.score >= 0) {
+                        addPaperToResultList(data.paper_id, data.paper);
+                    }
                     break;
                 case 'paper_removed':
                     removePaper(data.paper_id);
+                    removePaperFromResultList(data.paper_id);
                     break;
                 case 'file_generated':
                     addFile(data.file);
@@ -1172,7 +2262,6 @@
             // 检查是否已存在（避免重复添加）
             const existingPaper = document.getElementById(`paper-${paper.id}`);
             if (existingPaper) {
-                console.log(`论文 ${paper.id} 已存在，跳过添加`);
                 return;
             }
 
@@ -1237,7 +2326,6 @@
         function handlePaperReadyForConfirmation(paperId, paperData) {
             const paperItem = document.getElementById(`paper-${paperId}`);
             if (!paperItem) {
-                console.warn(`论文 ${paperId} 不存在，无法显示确认框`);
                 return;
             }
             
@@ -1481,26 +2569,56 @@
 
         // 添加文件
         function addFile(file) {
-            // 移除"等待生成文件..."提示
-            if (fileList.children.length === 1) {
-                const firstChild = fileList.firstElementChild;
-                if (firstChild && firstChild.textContent.includes('等待生成文件...')) {
-                    fileList.removeChild(firstChild);
-                }
+            addLog('success', `文件已生成: ${file.name}`);
+            
+            // 显示文件列表区域
+            const fileListSection = document.getElementById('file-list-section');
+            const fileList = document.getElementById('file-list');
+            
+            if (!fileListSection || !fileList) {
+                return;
             }
-
+            
+            // 显示文件列表区域
+            fileListSection.style.display = 'block';
+            
+            // 创建文件项
             const fileItem = document.createElement('div');
             fileItem.className = 'file-item';
-            fileItem.onclick = () => openFile(file.path);
+            fileItem.dataset.filePath = file.path;
             
-            const icon = file.type === 'md' ? '📝' : file.type === 'csv' ? '📊' : '📄';
+            // 根据文件类型设置图标
+            const fileIcon = file.type === 'md' ? '📄' : '📊';
+            const fileTypeText = file.type === 'md' ? 'Markdown' : 'CSV';
+            
+            // 转义文件路径和名称中的特殊字符
+            const escapedPath = file.path.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedName = file.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            
             fileItem.innerHTML = `
-                <div class="file-name">
-                    <span class="file-icon">${icon}</span>${file.name}
+                <div class="file-item-content">
+                    <div class="file-item-icon">${fileIcon}</div>
+                    <div class="file-item-info">
+                        <div class="file-item-name">${file.name}</div>
+                        <div class="file-item-meta">
+                            <span class="file-item-type">${fileTypeText}</span>
+                            <span class="file-item-size">${file.size}</span>
+                            <span class="file-item-time">${file.time}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="file-info">${file.size || ''} • ${file.time || ''}</div>
+                <div class="file-item-actions">
+                    <button class="file-action-btn" onclick="downloadFile('${escapedPath}', '${escapedName}')" title="下载">
+                        ⬇️
+                    </button>
+                    <button class="file-action-btn" onclick="openFile('${escapedPath}')" title="打开">
+                        🔍
+                    </button>
+                </div>
             `;
-            fileList.appendChild(fileItem);
+            
+            // 添加到文件列表（新文件添加到顶部）
+            fileList.insertBefore(fileItem, fileList.firstChild);
         }
 
         // 打开文件
@@ -1517,6 +2635,411 @@
                 .catch(error => {
                     addLog('error', `打开文件失败: ${error.message}`);
                 });
+        }
+
+        // 下载文件
+        function downloadFile(filePath, fileName) {
+            // 创建下载链接
+            const link = document.createElement('a');
+            link.href = `/api/download_file?path=${encodeURIComponent(filePath)}`;
+            link.download = fileName;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            addLog('success', `开始下载: ${fileName}`);
+        }
+
+        // ========== 论文结果列表功能 ==========
+        const paperResultList = document.getElementById('paper-result-list');
+        const processedPapers = {}; // 存储已处理的论文数据 {paper_id: paper_data}
+
+        // 添加论文到生成列表
+        function addPaperToResultList(paperId, paper) {
+            // 只添加成功处理且评分>=0的论文
+            if (paper.status !== 'success' || paper.score === undefined || paper.score < 0) {
+                return;
+            }
+
+            // 保存论文数据
+            processedPapers[paperId] = paper;
+
+            // 检查是否已存在
+            const existingItem = document.getElementById(`result-paper-${paperId}`);
+            if (existingItem) {
+                updatePaperResultItem(paperId, paper);
+                return;
+            }
+
+            // 移除"等待处理论文..."提示
+            if (paperResultList && paperResultList.children.length === 1) {
+                const firstChild = paperResultList.firstElementChild;
+                if (firstChild && firstChild.textContent.includes('等待处理论文...')) {
+                    paperResultList.removeChild(firstChild);
+                }
+            }
+
+            // 创建论文结果项
+            const resultItem = document.createElement('div');
+            resultItem.className = 'paper-result-item';
+            resultItem.id = `result-paper-${paperId}`;
+            resultItem.onclick = () => openPaperReviewWindow(paperId, paper);
+
+            const scoreClass = paper.score >= 3.5 ? 'high-value' : '';
+            resultItem.innerHTML = `
+                <div class="paper-result-title" title="${escapeHtml(paper.title || '')}">
+                    ${escapeHtml(paper.title || 'Unknown')}
+                </div>
+                <div class="paper-result-meta">
+                    <span>评分: <span class="paper-result-score ${scoreClass}">${paper.score ? paper.score.toFixed(2) : '0.00'}/4.0</span></span>
+                    ${paper.is_high_value ? '<span style="color: var(--neon-green);">⭐ 高价值</span>' : ''}
+                </div>
+            `;
+
+            if (paperResultList) {
+                paperResultList.appendChild(resultItem);
+            }
+        }
+
+        // 更新论文结果项
+        function updatePaperResultItem(paperId, paper) {
+            const resultItem = document.getElementById(`result-paper-${paperId}`);
+            if (!resultItem) return;
+
+            processedPapers[paperId] = paper;
+
+            const scoreClass = paper.score >= 3.5 ? 'high-value' : '';
+            resultItem.innerHTML = `
+                <div class="paper-result-title" title="${escapeHtml(paper.title || '')}">
+                    ${escapeHtml(paper.title || 'Unknown')}
+                </div>
+                <div class="paper-result-meta">
+                    <span>评分: <span class="paper-result-score ${scoreClass}">${paper.score ? paper.score.toFixed(2) : '0.00'}/4.0</span></span>
+                    ${paper.is_high_value ? '<span style="color: var(--neon-green);">⭐ 高价值</span>' : ''}
+                </div>
+            `;
+            resultItem.onclick = () => openPaperReviewWindow(paperId, paper);
+        }
+
+        // 从生成列表移除论文
+        function removePaperFromResultList(paperId) {
+            const resultItem = document.getElementById(`result-paper-${paperId}`);
+            if (resultItem) {
+                resultItem.remove();
+            }
+            delete processedPapers[paperId];
+
+            // 如果没有论文了，显示提示
+            if (paperResultList && paperResultList.children.length === 0) {
+                paperResultList.innerHTML = '<div style="text-align: center; color: rgba(255, 255, 255, 0.5); padding: 40px 20px;">等待处理论文...</div>';
+            }
+        }
+
+        // 打开论文评审窗口
+        function openPaperReviewWindow(paperId, paper) {
+            // 获取完整的论文数据（包括多模型结果）
+            const fullPaper = processedPapers[paperId] || paper;
+            
+            // 计算窗口居中位置
+            const windowWidth = 1200;
+            const windowHeight = 800;
+            const left = (screen.width - windowWidth) / 2;
+            const top = (screen.height - windowHeight) / 2;
+            
+            // 创建新窗口（居中显示）
+            const reviewWindow = window.open('', '_blank', 
+                `width=${windowWidth},height=${windowHeight},` +
+                `left=${left},top=${top},` +
+                `scrollbars=yes,resizable=yes`);
+            if (!reviewWindow) {
+                addLog('error', '无法打开新窗口，请检查浏览器弹窗设置');
+                return;
+            }
+
+            // 构建HTML内容
+            const multiModelResults = fullPaper.multi_model_results || {};
+            const summaryResult = fullPaper.summary_result || null;
+            const modelIds = Object.keys(multiModelResults);
+            
+            let tabsHtml = '';
+            let contentHtml = '';
+            let tabIndex = 0;
+            
+            // 如果有汇总结果，先添加汇总标签页
+            if (summaryResult) {
+                const isActive = tabIndex === 0 ? 'active' : '';
+                tabsHtml += `<button class="review-tab ${isActive}" onclick="switchReviewTab('summary')">📊 汇总</button>`;
+                
+                const isContentActive = tabIndex === 0 ? 'active' : '';
+                // 构建汇总内容
+                let summaryContent = '';
+                if (summaryResult.consensus_points) {
+                    summaryContent += `**共识要点**：\n\n${summaryResult.consensus_points}\n\n`;
+                }
+                if (summaryResult.divergence_points) {
+                    summaryContent += `**分歧分析**：\n\n${summaryResult.divergence_points}\n\n`;
+                }
+                if (summaryResult.final_review) {
+                    summaryContent += `**综合评审报告**：\n\n${summaryResult.final_review}\n\n`;
+                }
+                if (summaryResult.final_score_details && Object.keys(summaryResult.final_score_details).length > 0) {
+                    summaryContent += `**最终评分详情**：\n\n`;
+                    for (const [dim, score] of Object.entries(summaryResult.final_score_details)) {
+                        summaryContent += `- ${dim}：${score.toFixed(2)}/1.0\n`;
+                    }
+                    summaryContent += `\n`;
+                }
+                if (summaryResult.model_consistency !== undefined) {
+                    summaryContent += `**模型一致性**：${(summaryResult.model_consistency * 100).toFixed(1)}%\n\n`;
+                }
+                if (summaryResult.confidence !== undefined) {
+                    summaryContent += `**结果可信度**：${(summaryResult.confidence * 100).toFixed(1)}%\n\n`;
+                }
+                
+                contentHtml += `
+                    <div class="review-content ${isContentActive}" id="review-content-summary">
+                        <div class="review-markdown" id="review-markdown-summary">
+                            ${escapeHtml(summaryContent || '暂无汇总结果')}
+                        </div>
+                    </div>
+                `;
+                tabIndex++;
+            }
+            
+            // 添加各个模型的标签页
+            if (modelIds.length > 0) {
+                modelIds.forEach((modelId) => {
+                    const modelResult = multiModelResults[modelId];
+                    const modelName = modelResult.model_name || modelId;
+                    const isActive = tabIndex === 0 && !summaryResult ? 'active' : '';
+                    tabsHtml += `<button class="review-tab ${isActive}" onclick="switchReviewTab('${modelId}')">${escapeHtml(modelName)}</button>`;
+                    
+                    const isContentActive = tabIndex === 0 && !summaryResult ? 'active' : '';
+                    contentHtml += `
+                        <div class="review-content ${isContentActive}" id="review-content-${modelId}">
+                            <div class="review-markdown" id="review-markdown-${modelId}">
+                                ${escapeHtml(modelResult.review || '暂无评审结果')}
+                            </div>
+                        </div>
+                    `;
+                    tabIndex++;
+                });
+            } else {
+                // 如果没有多模型结果，显示单一评审结果
+                if (!summaryResult) {
+                    tabsHtml = '<button class="review-tab active">评审结果</button>';
+                    contentHtml = `
+                        <div class="review-content active">
+                            <div class="review-markdown">
+                                ${escapeHtml(fullPaper.review || '暂无评审结果')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // 先序列化JSON数据，避免在模板字符串中嵌套${}
+            const multiModelResultsJson = JSON.stringify(multiModelResults);
+            const summaryResultJson = JSON.stringify(summaryResult);
+            const fullPaperReviewJson = JSON.stringify(fullPaper.review || '');
+            
+            // 使用字符串拼接而不是模板字符串，避免JSON中的特殊字符导致语法错误
+            const htmlContent = '<!DOCTYPE html>\n' +
+'<html lang="zh-CN">\n' +
+'<head>\n' +
+'    <meta charset="UTF-8">\n' +
+'    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+'    <title>论文评审 - ' + escapeHtml(fullPaper.title || 'Unknown') + '</title>\n' +
+'    <script>\n' +
+'        // 动态加载 marked.js，避免 document.write 警告\n' +
+'        (function() {\n' +
+'            const script = document.createElement(\'script\');\n' +
+'            script.src = \'https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js\';\n' +
+'            script.async = true;\n' +
+'            document.head.appendChild(script);\n' +
+'        })();\n' +
+'    <\/script>\n' +
+'    <style>\n' +
+'        * { margin: 0; padding: 0; box-sizing: border-box; }\n' +
+'        body { font-family: \'Segoe UI\', Tahoma, Geneva, Verdana, sans-serif; background: #0a0e27; color: #fff; padding: 20px; overflow-y: auto; }\n' +
+'        .review-header { background: rgba(10, 20, 40, 0.7); border: 2px solid #00d9ff; border-radius: 12px; padding: 20px; margin-bottom: 20px; }\n' +
+'        .review-title { font-size: 20px; font-weight: 600; color: #00d9ff; margin-bottom: 10px; }\n' +
+'        .review-meta { display: flex; gap: 20px; font-size: 14px; color: rgba(255, 255, 255, 0.7); }\n' +
+'        .review-meta a { color: #00d9ff; text-decoration: none; }\n' +
+'        .review-meta a:hover { text-decoration: underline; }\n' +
+'        .review-tabs { display: flex !important; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid rgba(0, 217, 255, 0.3); padding-bottom: 10px; visibility: visible !important; opacity: 1 !important; }\n' +
+'        .review-tab { background: rgba(0, 217, 255, 0.1); border: 1px solid #00d9ff; border-radius: 6px; padding: 10px 20px; color: #00d9ff; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.3s; }\n' +
+'        .review-tab:hover { background: rgba(0, 217, 255, 0.2); }\n' +
+'        .review-tab.active { background: rgba(0, 217, 255, 0.3); border-color: #00d9ff; box-shadow: 0 0 15px rgba(0, 217, 255, 0.4); }\n' +
+'        .review-content { display: none; background: rgba(10, 20, 40, 0.7); border: 1px solid rgba(0, 217, 255, 0.3); border-radius: 12px; padding: 30px; min-height: 500px; max-height: calc(100vh - 300px); overflow-y: auto; }\n' +
+'        .review-content.active { display: block; }\n' +
+'        .review-markdown { line-height: 1.8; color: rgba(255, 255, 255, 0.9); }\n' +
+'        .review-markdown h1, .review-markdown h2, .review-markdown h3 { color: #00d9ff; margin-top: 20px; margin-bottom: 10px; }\n' +
+'        .review-markdown p { margin-bottom: 15px; }\n' +
+'        .review-markdown code { background: rgba(0, 0, 0, 0.3); padding: 2px 6px; border-radius: 3px; font-family: \'Courier New\', monospace; }\n' +
+'        .review-markdown pre { background: rgba(0, 0, 0, 0.5); padding: 15px; border-radius: 6px; overflow-x: auto; margin: 15px 0; }\n' +
+'        .review-markdown pre code { background: transparent; padding: 0; }\n' +
+'        .review-markdown strong { color: #00d9ff; }\n' +
+'        .review-markdown ul, .review-markdown ol { margin-left: 20px; margin-bottom: 15px; }\n' +
+'        .review-markdown li { margin-bottom: 8px; }\n' +
+'        /* 自定义滚动条样式 - 与主UI风格一致 */\n' +
+'        body::-webkit-scrollbar, .review-content::-webkit-scrollbar { width: 10px; }\n' +
+'        body::-webkit-scrollbar-track, .review-content::-webkit-scrollbar-track { background: transparent; }\n' +
+'        body::-webkit-scrollbar-thumb, .review-content::-webkit-scrollbar-thumb { background: rgba(0, 217, 255, 0.2); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }\n' +
+'        body::-webkit-scrollbar-thumb:hover, .review-content::-webkit-scrollbar-thumb:hover { background: rgba(0, 217, 255, 0.3); background-clip: padding-box; }\n' +
+'        body { scrollbar-width: thin; scrollbar-color: rgba(0, 217, 255, 0.2) transparent; }\n' +
+'        .review-content { scrollbar-width: thin; scrollbar-color: rgba(0, 217, 255, 0.2) transparent; }\n' +
+'    </style>\n' +
+'</head>\n' +
+'<body>\n' +
+'    <div class="review-header">\n' +
+'        <div class="review-title">' + escapeHtml(fullPaper.title || 'Unknown') + '</div>\n' +
+'        <div class="review-meta">\n' +
+'            <span>评分: <strong style="color: #00d9ff;">' + (fullPaper.score ? fullPaper.score.toFixed(2) : '0.00') + '/4.0</strong></span>\n' +
+(fullPaper.is_high_value ? '            <span style="color: #0f0;">⭐ 高价值论文</span>\n' : '') +
+(fullPaper.link ? '            <span><a href="' + escapeHtml(fullPaper.link) + '" target="_blank">查看原文</a></span>\n' : '') +
+'        </div>\n' +
+'    </div>\n' +
+(tabsHtml ? '    <div class="review-tabs">' + tabsHtml + '</div>\n' : '') +
+contentHtml + '\n' +
+'    <script>\n' +
+'        const multiModelResults = ' + multiModelResultsJson + ';\n' +
+'        const summaryResult = ' + summaryResultJson + ';\n' +
+'\n' +
+'        function switchReviewTab(tabId) {\n' +
+'            document.querySelectorAll(\'.review-content\').forEach(content => {\n' +
+'                content.classList.remove(\'active\');\n' +
+'            });\n' +
+'            document.querySelectorAll(\'.review-tab\').forEach(tab => {\n' +
+'                tab.classList.remove(\'active\');\n' +
+'            });\n' +
+'            const content = document.getElementById(\'review-content-\' + tabId);\n' +
+'            if (content) {\n' +
+'                content.classList.add(\'active\');\n' +
+'            }\n' +
+'            event.target.classList.add(\'active\');\n' +
+'            if (content && window.marked) {\n' +
+'                const markdownEl = content.querySelector(\'.review-markdown\');\n' +
+'                if (markdownEl) {\n' +
+'                    let reviewText = \'\';\n' +
+'                    if (tabId === \'summary\') {\n' +
+'                        // 显示汇总结果\n' +
+'                        if (summaryResult) {\n' +
+'                            if (summaryResult.consensus_points) {\n' +
+'                                reviewText += \'**共识要点**：\\n\\n\' + summaryResult.consensus_points + \'\\n\\n\';\n' +
+'                            }\n' +
+'                            if (summaryResult.divergence_points) {\n' +
+'                                reviewText += \'**分歧分析**：\\n\\n\' + summaryResult.divergence_points + \'\\n\\n\';\n' +
+'                            }\n' +
+'                            if (summaryResult.final_review) {\n' +
+'                                reviewText += \'**综合评审报告**：\\n\\n\' + summaryResult.final_review + \'\\n\\n\';\n' +
+'                            }\n' +
+'                            if (summaryResult.final_score_details && Object.keys(summaryResult.final_score_details).length > 0) {\n' +
+'                                reviewText += \'**最终评分详情**：\\n\\n\';\n' +
+'                                for (const [dim, score] of Object.entries(summaryResult.final_score_details)) {\n' +
+'                                    reviewText += \'- \' + dim + \'：\' + score.toFixed(2) + \'/1.0\\n\';\n' +
+'                                }\n' +
+'                                reviewText += \'\\n\';\n' +
+'                            }\n' +
+'                            if (summaryResult.model_consistency !== undefined) {\n' +
+'                                reviewText += \'**模型一致性**：\' + (summaryResult.model_consistency * 100).toFixed(1) + \'%\\n\\n\';\n' +
+'                            }\n' +
+'                            if (summaryResult.confidence !== undefined) {\n' +
+'                                reviewText += \'**结果可信度**：\' + (summaryResult.confidence * 100).toFixed(1) + \'%\\n\\n\';\n' +
+'                            }\n' +
+'                        } else {\n' +
+'                            reviewText = \'暂无汇总结果\';\n' +
+'                        }\n' +
+'                    } else if (multiModelResults[tabId]) {\n' +
+'                        // 显示单个模型的结果\n' +
+'                        reviewText = multiModelResults[tabId].review || \'\';\n' +
+'                    } else {\n' +
+'                        reviewText = \'暂无评审结果\';\n' +
+'                    }\n' +
+'                    markdownEl.innerHTML = window.marked.parse(reviewText);\n' +
+'                }\n' +
+'            }\n' +
+'        }\n' +
+'\n' +
+'        window.addEventListener(\'DOMContentLoaded\', () => {\n' +
+'            const firstContent = document.querySelector(\'.review-content.active\');\n' +
+'            if (firstContent && window.marked) {\n' +
+'                const markdownEl = firstContent.querySelector(\'.review-markdown\');\n' +
+'                if (markdownEl) {\n' +
+'                    let reviewText = \'\';\n' +
+'                    if (summaryResult) {\n' +
+'                        // 默认显示汇总结果\n' +
+'                        if (summaryResult.consensus_points) {\n' +
+'                            reviewText += \'**共识要点**：\\n\\n\' + summaryResult.consensus_points + \'\\n\\n\';\n' +
+'                        }\n' +
+'                        if (summaryResult.divergence_points) {\n' +
+'                            reviewText += \'**分歧分析**：\\n\\n\' + summaryResult.divergence_points + \'\\n\\n\';\n' +
+'                        }\n' +
+'                        if (summaryResult.final_review) {\n' +
+'                            reviewText += \'**综合评审报告**：\\n\\n\' + summaryResult.final_review + \'\\n\\n\';\n' +
+'                        }\n' +
+'                        if (summaryResult.final_score_details && Object.keys(summaryResult.final_score_details).length > 0) {\n' +
+'                            reviewText += \'**最终评分详情**：\\n\\n\';\n' +
+'                            for (const [dim, score] of Object.entries(summaryResult.final_score_details)) {\n' +
+'                                reviewText += \'- \' + dim + \'：\' + score.toFixed(2) + \'/1.0\\n\';\n' +
+'                            }\n' +
+'                            reviewText += \'\\n\';\n' +
+'                        }\n' +
+'                        if (summaryResult.model_consistency !== undefined) {\n' +
+'                            reviewText += \'**模型一致性**：\' + (summaryResult.model_consistency * 100).toFixed(1) + \'%\\n\\n\';\n' +
+'                        }\n' +
+'                        if (summaryResult.confidence !== undefined) {\n' +
+'                            reviewText += \'**结果可信度**：\' + (summaryResult.confidence * 100).toFixed(1) + \'%\\n\\n\';\n' +
+'                        }\n' +
+'                    } else {\n' +
+'                        const firstModelId = Object.keys(multiModelResults)[0];\n' +
+'                        if (firstModelId) {\n' +
+'                            reviewText = multiModelResults[firstModelId].review || \'\';\n' +
+'                        } else {\n' +
+'                            reviewText = ' + fullPaperReviewJson + ';\n' +
+'                        }\n' +
+'                    }\n' +
+'                    markdownEl.innerHTML = window.marked.parse(reviewText);\n' +
+'                }\n' +
+'            }\n' +
+'        });\n' +
+'    <\/script>\n' +
+'<\/body>\n' +
+'<\/html>';
+
+            // 使用更安全的方式写入内容
+            reviewWindow.document.open();
+            reviewWindow.document.write(htmlContent);
+            reviewWindow.document.close();
+            
+            // 等待 marked.js 加载完成后再渲染
+            const checkMarked = setInterval(function() {
+                if (reviewWindow.marked) {
+                    clearInterval(checkMarked);
+                    // 渲染所有 Markdown 内容
+                    reviewWindow.document.querySelectorAll('.review-markdown').forEach(function(el) {
+                        if (el.textContent && !el.innerHTML.includes('<')) {
+                            // 如果内容还是纯文本，说明还没渲染
+                            el.innerHTML = reviewWindow.marked.parse(el.textContent);
+                        }
+                    });
+                }
+            }, 100);
+            
+            // 10秒后停止检查
+            setTimeout(function() {
+                clearInterval(checkMarked);
+            }, 10000);
+        }
+
+        // HTML转义函数（如果不存在）
+        if (typeof escapeHtml === 'undefined') {
+            window.escapeHtml = function(text) {
+                if (!text) return '';
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            };
         }
 
         // 开始运行或继续运行
@@ -1537,7 +3060,11 @@
             };
 
             if (mode === 'local') {
-                config.csv_path = document.getElementById('csv-path').value;
+                const csvFileInput = document.getElementById('csv-file');
+                if (!csvFileInput || !csvFileInput.files || csvFileInput.files.length === 0) {
+                    addLog('error', '请选择CSV文件');
+                    return;
+                }
             } else {
                 // 将日期转换为天数
                 const startDateInput = document.getElementById('start-date');
@@ -1567,17 +3094,36 @@
             }
 
             // 清空列表
-            paperList.innerHTML = '<div style="text-align: center; color: #666; padding: 40px 20px;">处理中...</div>';
-            fileList.innerHTML = '<div style="text-align: center; color: #666; padding: 40px 20px;">等待生成文件...</div>';
+            if (paperList) {
+                paperList.innerHTML = '<div style="text-align: center; color: #666; padding: 40px 20px;">处理中...</div>';
+            }
+            // 注意：fileList 已改为 paperResultList，但这里不需要清空，因为论文结果会在处理完成后自动添加
 
             // 发送启动请求
-            fetch('/api/start', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(config)
-            })
+            let requestPromise;
+            if (mode === 'local') {
+                // 本地模式：使用FormData上传文件
+                const csvFileInput = document.getElementById('csv-file');
+                const formData = new FormData();
+                formData.append('csv_file', csvFileInput.files[0]);
+                formData.append('config', JSON.stringify(config));
+                
+                requestPromise = fetch('/api/start', {
+                    method: 'POST',
+                    body: formData
+                });
+            } else {
+                // 远程模式：发送JSON配置
+                requestPromise = fetch('/api/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+            }
+            
+            requestPromise
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -1591,8 +3137,978 @@
             });
         });
 
+        // 显示选中的文件名
+        function initFileSelectHandler() {
+            const csvFileInput = document.getElementById('csv-file');
+            const csvFileName = document.getElementById('csv-file-name');
+            const fileSelectText = document.getElementById('file-select-text');
+            const fileSelectButton = document.getElementById('file-select-button');
+            
+            if (!csvFileInput || !csvFileName || !fileSelectText) {
+                // 如果元素不存在，延迟重试
+                setTimeout(initFileSelectHandler, 100);
+                return;
+            }
+            
+            // 文件选择变化事件
+            csvFileInput.addEventListener('change', function(e) {
+                const file = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
+                const fileName = file ? file.name : '未选择文件';
+                
+                // 更新文件名显示
+                if (csvFileName) {
+                    csvFileName.textContent = fileName;
+                }
+                
+                // 更新按钮文本
+                if (file && fileSelectText) {
+                    fileSelectText.textContent = `✓ ${fileName}`;
+                    fileSelectText.style.color = '#00ff88';
+                } else if (fileSelectText) {
+                    fileSelectText.textContent = '📁 点击选择CSV文件';
+                    fileSelectText.style.color = '#fff';
+                }
+            });
+            
+            // 确保按钮点击也能触发文件选择
+            if (fileSelectButton) {
+                fileSelectButton.addEventListener('click', function(e) {
+                    // 如果点击的不是文件输入框本身，触发文件选择
+                    if (e.target !== csvFileInput) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        csvFileInput.click();
+                    }
+                });
+            }
+            
+            if (fileSelectText) {
+                fileSelectText.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    csvFileInput.click();
+                });
+            }
+        }
+
         // 初始化
-        connectWebSocket();
+        // 确保DOM加载完成后再初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                initFileSelectHandler();
+                connectWebSocket();
+            });
+        } else {
+            // DOM已经加载完成
+            initFileSelectHandler();
+            connectWebSocket();
+        }
+    </script>
+
+    <!-- 设置弹窗 -->
+    <div class="settings-modal" id="settings-modal">
+        <div class="settings-content">
+            <div class="settings-header">
+                <h3>模型设置</h3>
+                <button class="settings-close" id="settings-close">✕</button>
+            </div>
+            <div class="settings-body">
+                <button class="btn-add-model" id="btn-add-model">+ 添加模型</button>
+                <div class="model-list" id="model-list">
+                    <!-- 模型列表将在这里动态生成 -->
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button class="btn-save" id="btn-save-models">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 设置弹窗功能（确保DOM已加载）
+        let settingsBtn, settingsModal, settingsClose, btnAddModel, modelList, btnSaveModels;
+        let models = [];
+        let settingsInitialized = false;
+
+        // 全局函数：打开设置弹窗（作为备选方案）
+        window.openSettingsModal = function() {
+            if (!settingsInitialized) {
+                initSettingsModal();
+            }
+            const modal = document.getElementById('settings-modal');
+            if (modal) {
+                loadModelsForModal();
+                modal.classList.add('active');
+            }
+        };
+
+        // 加载模型列表（独立函数，供onclick使用）
+        function loadModelsForModal() {
+            fetch('/api/models')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // 使用服务器返回的配置，而不是之前内存中的配置
+                        models = data.models || [];
+                        // 确保每个模型都有collapsed、is_default和enabled属性
+                        let hasDefault = false;
+                        models.forEach(model => {
+                            if (model.collapsed === undefined) {
+                                model.collapsed = true; // 默认折叠
+                            }
+                            if (model.is_default === true) {
+                                hasDefault = true;
+                            }
+                            if (model.enabled === undefined) {
+                                model.enabled = true; // 默认启用
+                            }
+                        });
+                        // 如果没有默认模型，将第一个设为默认
+                        if (!hasDefault && models.length > 0) {
+                            models[0].is_default = true;
+                        }
+                        if (window.renderModels) {
+                            window.renderModels();
+                        }
+                    } else {
+                        addLog('error', `加载模型配置失败: ${data.error}`);
+                    }
+                })
+                .catch(error => {
+                    addLog('error', `加载模型配置失败: ${error.message}`);
+                });
+        }
+
+        function initSettingsModal() {
+            settingsBtn = document.getElementById('settings-btn');
+            settingsModal = document.getElementById('settings-modal');
+            settingsClose = document.getElementById('settings-close');
+            btnAddModel = document.getElementById('btn-add-model');
+            modelList = document.getElementById('model-list');
+            btnSaveModels = document.getElementById('btn-save-models');
+
+            if (!settingsBtn || !settingsModal || !settingsClose || !btnAddModel || !modelList || !btnSaveModels) {
+                return false;
+            }
+
+            // 加载模型列表（从服务器读取已保存的配置）
+            function loadModels() {
+                fetch('/api/models')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // 使用服务器返回的配置，而不是之前内存中的配置
+                            models = data.models || [];
+                            // 确保每个模型都有collapsed、is_default和enabled属性
+                            let hasDefault = false;
+                            models.forEach(model => {
+                                if (model.collapsed === undefined) {
+                                    model.collapsed = true; // 默认折叠
+                                }
+                                if (model.is_default === true) {
+                                    hasDefault = true;
+                                }
+                                if (model.enabled === undefined) {
+                                    model.enabled = true; // 默认启用
+                                }
+                            });
+                            // 如果没有默认模型，将第一个设为默认
+                            if (!hasDefault && models.length > 0) {
+                                models[0].is_default = true;
+                            }
+                            renderModels();
+                        } else {
+                            addLog('error', `加载模型配置失败: ${data.error}`);
+                        }
+                    })
+                    .catch(error => {
+                        addLog('error', `加载模型配置失败: ${error.message}`);
+                    });
+            }
+
+            // 渲染模型列表
+            function renderModels() {
+                if (!modelList) return;
+                
+                modelList.innerHTML = '';
+                
+                if (models.length === 0) {
+                    modelList.innerHTML = '<div style="text-align: center; color: rgba(255, 255, 255, 0.5); padding: 20px;">暂无模型配置，点击"添加模型"创建</div>';
+                    return;
+                }
+
+                models.forEach((model, index) => {
+                    const modelItem = document.createElement('div');
+                    modelItem.className = 'model-item';
+                    const isCollapsed = model.collapsed !== false; // 默认折叠
+                    modelItem.innerHTML = `
+                        <div class="model-item-header">
+                            <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                                <button class="btn-collapse" onclick="toggleModelCollapse(${index})" title="${isCollapsed ? '展开' : '折叠'}">
+                                    ${isCollapsed ? '▶' : '▼'}
+                                </button>
+                                <label class="default-model-radio">
+                                    <input type="radio" name="default-model" value="${index}" 
+                                           ${model.is_default ? 'checked' : ''} 
+                                           onchange="setDefaultModel(${index})">
+                                    <span class="radio-label">默认</span>
+                                </label>
+                                <label class="enable-model-checkbox">
+                                    <input type="checkbox" 
+                                           ${model.enabled !== false ? 'checked' : ''} 
+                                           onchange="toggleModelEnabled(${index}, this.checked)">
+                                    <span class="checkbox-label">启用</span>
+                                </label>
+                                <input type="text" class="model-title-input" value="${model.name || '未命名模型'}" 
+                                       onchange="updateModel(${index}, 'name', this.value)" 
+                                       placeholder="模型名称"
+                                       style="background: transparent; border: none; border-bottom: 1px solid var(--neon-cyan); color: var(--neon-cyan); font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 600; padding: 4px 8px; flex: 1;">
+                            </div>
+                            <div class="model-item-actions">
+                                <button class="btn-test" onclick="testModel(${index})">测试</button>
+                                <button class="btn-delete" onclick="deleteModel(${index})">删除</button>
+                            </div>
+                        </div>
+                        <div class="model-item-content" style="display: ${isCollapsed ? 'none' : 'block'}; margin-top: 15px;">
+                            <div class="model-form-group">
+                                <label>模型类型</label>
+                                <select onchange="updateModelType(${index}, this.value)">
+                                    <option value="local" ${model.type === 'local' ? 'selected' : ''}>本地模型 (Ollama)</option>
+                                    <option value="remote" ${model.type === 'remote' ? 'selected' : ''}>远程模型 (API)</option>
+                                </select>
+                            </div>
+                            ${model.type === 'local' ? `
+                                <div class="model-form-group">
+                                    <label>Base URL</label>
+                                    <input type="text" value="${model.base_url || ''}" onchange="updateModel(${index}, 'base_url', this.value)" placeholder="例如: http://localhost:11434">
+                                </div>
+                                <div class="model-form-group">
+                                    <label>模型名称</label>
+                                    <input type="text" value="${model.model_name || ''}" onchange="updateModel(${index}, 'model_name', this.value)" placeholder="例如: qwen2.5:32b">
+                                </div>
+                            ` : `
+                                <div class="model-form-group">
+                                    <label>API Key</label>
+                                    <input type="password" value="${model.api_key || ''}" onchange="updateModel(${index}, 'api_key', this.value)" placeholder="输入API密钥">
+                                </div>
+                                <div class="model-form-group">
+                                    <label>Base URL / API Base</label>
+                                    <input type="text" value="${model.base_url || model.api_base || ''}" onchange="updateModel(${index}, 'base_url', this.value)" placeholder="例如: https://api.openai.com/v1">
+                                </div>
+                                <div class="model-form-group">
+                                    <label>模型名称 (可选)</label>
+                                    <input type="text" value="${model.model_name || ''}" onchange="updateModel(${index}, 'model_name', this.value)" placeholder="例如: gpt-4">
+                                </div>
+                            `}
+                            <div class="model-form-group">
+                                <label>描述 (可选)</label>
+                                <input type="text" value="${model.description || ''}" onchange="updateModel(${index}, 'description', this.value)" placeholder="模型描述">
+                            </div>
+                        </div>
+                    `;
+                    modelList.appendChild(modelItem);
+                });
+            }
+
+            // 将函数暴露到全局作用域
+            window.renderModels = renderModels;
+
+            // 打开设置弹窗
+            settingsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                loadModels();
+                settingsModal.classList.add('active');
+            });
+
+            // 关闭设置弹窗
+            settingsClose.addEventListener('click', () => {
+                settingsModal.classList.remove('active');
+            });
+
+            // 移除点击背景关闭功能，只能通过X按钮关闭
+
+            // 添加新模型（添加到最上面）
+            btnAddModel.addEventListener('click', () => {
+                const newModel = {
+                    id: `model_${Date.now()}`,
+                    name: '新模型',
+                    type: 'local',
+                    base_url: 'http://localhost:11434',
+                    model_name: 'qwen2.5:32b',
+                    api_key: '',
+                    description: '',
+                    collapsed: false, // 新添加的模型默认展开
+                    is_default: models.length === 0, // 如果是第一个模型，自动设为默认
+                    enabled: true // 新添加的模型默认启用
+                };
+                // 如果这是第一个模型，设为默认；否则清除其他模型的默认标记
+                if (models.length === 0) {
+                    newModel.is_default = true;
+                } else {
+                    models.forEach(model => {
+                        model.is_default = false;
+                    });
+                }
+                models.unshift(newModel); // 使用unshift添加到数组开头
+                renderModels();
+            });
+
+            // 保存模型配置
+            btnSaveModels.addEventListener('click', () => {
+                // 验证所有模型配置
+                let hasError = false;
+                for (let i = 0; i < models.length; i++) {
+                    const model = models[i];
+                    if (!model.name || !model.name.trim()) {
+                        addLog('error', `模型 ${i + 1} 缺少名称`);
+                        hasError = true;
+                    }
+                    if (model.type === 'local') {
+                        if (!model.base_url || !model.model_name) {
+                            addLog('error', `模型 "${model.name}" 缺少必要配置（Base URL 或模型名称）`);
+                            hasError = true;
+                        }
+                    } else if (model.type === 'remote') {
+                        if (!model.api_key || (!model.base_url && !model.api_base)) {
+                            addLog('error', `模型 "${model.name}" 缺少必要配置（API Key 或 Base URL）`);
+                            hasError = true;
+                        }
+                    }
+                }
+
+                if (hasError) {
+                    return;
+                }
+
+                fetch('/api/models', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ models: models })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog('success', '模型配置保存成功');
+                        settingsModal.classList.remove('active');
+                    } else {
+                        addLog('error', `保存失败: ${data.error}`);
+                    }
+                })
+                .catch(error => {
+                    addLog('error', `保存失败: ${error.message}`);
+                });
+            });
+
+            settingsInitialized = true;
+            return true;
+        }
+
+        // 更新模型配置
+        window.updateModel = function(index, field, value) {
+            if (models[index]) {
+                models[index][field] = value;
+            }
+        };
+
+        // 切换模型折叠/展开
+        window.toggleModelCollapse = function(index) {
+            if (models[index]) {
+                models[index].collapsed = !models[index].collapsed;
+                if (window.renderModels) window.renderModels();
+            }
+        };
+
+        // 设置默认模型
+        window.setDefaultModel = function(index) {
+            // 清除所有模型的默认标记
+            models.forEach((model, i) => {
+                model.is_default = (i === index);
+            });
+            // 重新渲染以更新单选按钮状态
+            if (window.renderModels) window.renderModels();
+        };
+
+        // 切换模型启用状态
+        window.toggleModelEnabled = function(index, enabled) {
+            if (models[index]) {
+                models[index].enabled = enabled;
+            }
+        };
+
+        // 更新模型类型（需要重新渲染）
+        window.updateModelType = function(index, type) {
+            if (models[index]) {
+                models[index].type = type;
+                // 根据类型设置默认值
+                if (type === 'local') {
+                    if (!models[index].base_url) models[index].base_url = 'http://localhost:11434';
+                    if (!models[index].model_name) models[index].model_name = 'qwen2.5:32b';
+                    models[index].api_key = '';
+                } else {
+                    if (!models[index].api_key) models[index].api_key = '';
+                    if (!models[index].base_url && !models[index].api_base) {
+                        models[index].base_url = '';
+                    }
+                }
+                if (window.renderModels) window.renderModels();
+            }
+        };
+
+        // 删除模型
+        window.deleteModel = function(index) {
+            if (confirm('确定要删除这个模型配置吗？')) {
+                models.splice(index, 1);
+                if (window.renderModels) window.renderModels();
+            }
+        };
+
+        // 测试模型
+        window.testModel = function(index) {
+            const model = models[index];
+            if (!model) return;
+
+            const testBtn = event.target;
+            const originalText = testBtn.textContent;
+            testBtn.disabled = true;
+            testBtn.textContent = '测试中...';
+            
+            // 移除之前的测试状态
+            const statusEl = testBtn.parentElement.querySelector('.test-status');
+            if (statusEl) {
+                statusEl.remove();
+            }
+
+            fetch('/api/models/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ model: model })
+            })
+            .then(response => response.json())
+            .then(data => {
+                testBtn.disabled = false;
+                testBtn.textContent = originalText;
+                
+                const statusEl = document.createElement('span');
+                statusEl.className = 'test-status ' + (data.success ? 'success' : 'error');
+                statusEl.textContent = data.success ? '✓ 连接成功' : '✗ ' + (data.error || '连接失败');
+                testBtn.parentElement.appendChild(statusEl);
+                
+                // 3秒后移除状态提示
+                setTimeout(() => {
+                    if (statusEl.parentElement) {
+                        statusEl.remove();
+                    }
+                }, 3000);
+            })
+            .catch(error => {
+                testBtn.disabled = false;
+                testBtn.textContent = originalText;
+                
+                const statusEl = document.createElement('span');
+                statusEl.className = 'test-status error';
+                statusEl.textContent = '✗ 测试失败: ' + error.message;
+                testBtn.parentElement.appendChild(statusEl);
+                
+                setTimeout(() => {
+                    if (statusEl.parentElement) {
+                        statusEl.remove();
+                    }
+                }, 3000);
+            });
+        };
+
+        // 在DOM加载完成后初始化
+        function tryInitSettings() {
+            const result = initSettingsModal();
+            if (!result) {
+                setTimeout(tryInitSettings, 1000);
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', tryInitSettings);
+        } else {
+            // DOM已经加载完成
+            tryInitSettings();
+        }
+    </script>
+
+    <!-- 邮箱设置模态框 -->
+    <div class="email-settings-modal" id="email-settings-modal">
+        <div class="email-settings-content">
+            <div class="email-settings-header">
+                <h3>⚙️ 邮箱设置</h3>
+                <button class="email-settings-close" id="email-settings-close">✕</button>
+            </div>
+            <div class="email-settings-body">
+                <div class="email-settings-form">
+                    <div class="form-group">
+                        <label for="email-config-user">邮箱账号</label>
+                        <input type="text" id="email-config-user" class="input-field" placeholder="your_email@qq.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="email-config-password">授权码/密码</label>
+                        <input type="password" id="email-config-password" class="input-field" placeholder="请输入IMAP授权码">
+                    </div>
+                    <div class="form-group">
+                        <label for="email-config-imap-server">IMAP服务器</label>
+                        <input type="text" id="email-config-imap-server" class="input-field" placeholder="imap.qq.com" value="imap.qq.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="email-config-imap-port">IMAP端口</label>
+                        <input type="number" id="email-config-imap-port" class="input-field" placeholder="993" value="993">
+                    </div>
+                    <div class="form-hint">
+                        <p>💡 提示：</p>
+                        <ul>
+                            <li>QQ邮箱需要在"设置-账户"中开启IMAP服务并获取授权码</li>
+                            <li>其他邮箱请参考对应邮箱服务商的IMAP配置说明</li>
+                            <li>配置信息将保存在本地，不会上传到服务器</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="email-settings-footer">
+                <button class="btn-test" id="btn-test-email">测试连接</button>
+                <button class="btn-save" id="btn-save-email-config">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邮件信息模态框 -->
+    <div class="email-modal" id="email-modal">
+        <div class="email-content">
+            <div class="email-header">
+                <h3>📧 邮箱信息</h3>
+                <button class="email-close" id="email-close">✕</button>
+            </div>
+            <div class="email-body">
+                <div class="email-summary" id="email-summary">
+                    <div class="email-summary-item">
+                        <span class="email-summary-label">最后更新:</span>
+                        <span id="email-last-update">-</span>
+                    </div>
+                    <div class="email-summary-item">
+                        <span class="email-summary-label">邮件总数:</span>
+                        <span id="email-total">0</span>
+                    </div>
+                    <div class="email-summary-item">
+                        <span class="email-summary-label">论文总数:</span>
+                        <span id="email-papers-total">0</span>
+                    </div>
+                </div>
+                <div class="email-list" id="email-list">
+                    <!-- 邮件列表将在这里动态生成 -->
+                </div>
+            </div>
+            <div class="email-footer">
+                <div class="email-pagination" id="email-pagination" style="display: none;">
+                    <button class="pagination-btn" id="pagination-prev">上一页</button>
+                    <span class="pagination-info" id="pagination-info">第 1 页，共 1 页</span>
+                    <button class="pagination-btn" id="pagination-next">下一页</button>
+                </div>
+                <div class="email-footer-buttons">
+                    <button class="btn-settings" id="btn-email-settings" title="邮箱设置">⚙️</button>
+                    <button class="btn-update" id="btn-update-emails">更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 邮件信息模态框相关代码
+        let emailModal, emailClose, btnUpdateEmails, emailList, emailLastUpdate, emailTotal, emailPapersTotal;
+        let allEmails = [];  // 存储所有邮件
+        let currentPage = 1;
+        const emailsPerPage = 10;  // 每页显示10封邮件
+
+        function loadEmailInfo() {
+            fetch('/api/emails/all')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const emailData = data.data;
+                        emailLastUpdate.textContent = emailData.last_update || '从未更新';
+                        emailTotal.textContent = emailData.total_emails || 0;
+                        emailPapersTotal.textContent = emailData.total_papers || 0;
+                        
+                        // 保存所有邮件
+                        allEmails = emailData.emails || [];
+                        currentPage = 1;
+                        
+                        // 渲染邮件列表和分页
+                        renderEmailList();
+                        updatePagination();
+                    } else {
+                        console.error('获取邮件信息失败:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取邮件信息出错:', error);
+                });
+        }
+
+        function renderEmailList() {
+            emailList.innerHTML = '';
+            
+            if (allEmails.length === 0) {
+                emailList.innerHTML = '<div style="text-align: center; color: rgba(255, 255, 255, 0.5); padding: 40px 20px;">暂无邮件</div>';
+                return;
+            }
+            
+            // 计算当前页的邮件范围
+            const startIndex = (currentPage - 1) * emailsPerPage;
+            const endIndex = startIndex + emailsPerPage;
+            const currentPageEmails = allEmails.slice(startIndex, endIndex);
+            
+            currentPageEmails.forEach(email => {
+                const emailItem = document.createElement('div');
+                emailItem.className = 'email-item';
+                
+                const papersHtml = email.papers && email.papers.length > 0
+                    ? email.papers.map(paper => {
+                        const title = paper.title || '无标题';
+                        const link = paper.link || '#';
+                        return `
+                        <div class="email-paper-item">
+                            ${link && link !== '#' ? `<a href="${link}" target="_blank" class="email-paper-title-link">${title}</a>` : `<div class="email-paper-title">${title}</div>`}
+                        </div>
+                    `;
+                    }).join('')
+                    : '<div style="color: rgba(255, 255, 255, 0.5); font-size: 12px;">无论文信息</div>';
+                
+                emailItem.innerHTML = `
+                    <div class="email-item-header">
+                        <div class="email-item-subject">${email.subject || '无主题'}</div>
+                        <div class="email-item-date">${email.date || '-'}</div>
+                    </div>
+                    <div class="email-item-papers">
+                        <div class="email-item-papers-title">论文 (${email.paper_count || 0}):</div>
+                        ${papersHtml}
+                    </div>
+                `;
+                
+                emailList.appendChild(emailItem);
+            });
+        }
+
+        function updatePagination() {
+            const pagination = document.getElementById('email-pagination');
+            const paginationInfo = document.getElementById('pagination-info');
+            const paginationPrev = document.getElementById('pagination-prev');
+            const paginationNext = document.getElementById('pagination-next');
+            
+            if (!pagination || !paginationInfo || !paginationPrev || !paginationNext) {
+                return;
+            }
+            
+            const totalPages = Math.ceil(allEmails.length / emailsPerPage);
+            
+            if (totalPages <= 1) {
+                pagination.style.display = 'none';
+                return;
+            }
+            
+            pagination.style.display = 'flex';
+            paginationInfo.textContent = `第 ${currentPage} 页，共 ${totalPages} 页`;
+            
+            paginationPrev.disabled = currentPage === 1;
+            paginationNext.disabled = currentPage === totalPages;
+        }
+
+        function goToPage(page) {
+            const totalPages = Math.ceil(allEmails.length / emailsPerPage);
+            if (page < 1 || page > totalPages) {
+                return;
+            }
+            currentPage = page;
+            renderEmailList();
+            updatePagination();
+            // 滚动到顶部
+            const emailBody = document.querySelector('.email-body');
+            if (emailBody) {
+                emailBody.scrollTop = 0;
+            }
+        }
+
+        function updateEmails() {
+            btnUpdateEmails.disabled = true;
+            btnUpdateEmails.textContent = '更新中...';
+            
+            fetch('/api/emails/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    start_days: 7,
+                    end_days: 0
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadEmailInfo();
+                        alert(`更新成功！共更新 ${data.updated_count || 0} 封邮件`);
+                    } else {
+                        alert('更新失败: ' + (data.error || '未知错误'));
+                    }
+                })
+                .catch(error => {
+                    console.error('更新邮件出错:', error);
+                    alert('更新失败: ' + error.message);
+                })
+                .finally(() => {
+                    btnUpdateEmails.disabled = false;
+                    btnUpdateEmails.textContent = '更新';
+                });
+        }
+
+        // 初始化邮件模态框
+        function initEmailModal() {
+            emailModal = document.getElementById('email-modal');
+            emailClose = document.getElementById('email-close');
+            btnUpdateEmails = document.getElementById('btn-update-emails');
+            emailList = document.getElementById('email-list');
+            emailLastUpdate = document.getElementById('email-last-update');
+            emailTotal = document.getElementById('email-total');
+            emailPapersTotal = document.getElementById('email-papers-total');
+            
+            const emailBtn = document.getElementById('email-btn');
+            const paginationPrev = document.getElementById('pagination-prev');
+            const paginationNext = document.getElementById('pagination-next');
+            
+            if (emailBtn) {
+                emailBtn.addEventListener('click', () => {
+                    loadEmailInfo();
+                    emailModal.classList.add('active');
+                });
+            }
+            
+            if (emailClose) {
+                emailClose.addEventListener('click', () => {
+                    emailModal.classList.remove('active');
+                });
+            }
+            
+            if (btnUpdateEmails) {
+                btnUpdateEmails.addEventListener('click', updateEmails);
+            }
+            
+            if (paginationPrev) {
+                paginationPrev.addEventListener('click', () => {
+                    goToPage(currentPage - 1);
+                });
+            }
+            
+            if (paginationNext) {
+                paginationNext.addEventListener('click', () => {
+                    goToPage(currentPage + 1);
+                });
+            }
+            
+            // 初始化邮箱设置模态框
+            initEmailSettingsModal();
+        }
+
+        // 初始化邮箱设置模态框
+        function initEmailSettingsModal() {
+            emailSettingsModal = document.getElementById('email-settings-modal');
+            emailSettingsClose = document.getElementById('email-settings-close');
+            btnEmailSettings = document.getElementById('btn-email-settings');
+            btnSaveEmailConfig = document.getElementById('btn-save-email-config');
+            btnTestEmail = document.getElementById('btn-test-email');
+            emailConfigUser = document.getElementById('email-config-user');
+            emailConfigPassword = document.getElementById('email-config-password');
+            emailConfigImapServer = document.getElementById('email-config-imap-server');
+            emailConfigImapPort = document.getElementById('email-config-imap-port');
+            
+            // 打开设置模态框
+            if (btnEmailSettings) {
+                btnEmailSettings.addEventListener('click', () => {
+                    loadEmailConfig();
+                    emailSettingsModal.classList.add('active');
+                });
+            }
+            
+            // 关闭设置模态框
+            if (emailSettingsClose) {
+                emailSettingsClose.addEventListener('click', () => {
+                    emailSettingsModal.classList.remove('active');
+                });
+            }
+            
+            // 点击背景关闭
+            if (emailSettingsModal) {
+                emailSettingsModal.addEventListener('click', (e) => {
+                    if (e.target === emailSettingsModal) {
+                        emailSettingsModal.classList.remove('active');
+                    }
+                });
+            }
+            
+            // 保存配置
+            if (btnSaveEmailConfig) {
+                btnSaveEmailConfig.addEventListener('click', saveEmailConfig);
+            }
+            
+            // 测试连接
+            if (btnTestEmail) {
+                btnTestEmail.addEventListener('click', testEmailConnection);
+            }
+            
+            // 当用户点击密码输入框时，如果是占位符，清空以便输入
+            if (emailConfigPassword) {
+                emailConfigPassword.addEventListener('focus', function() {
+                    if (this.value === '********') {
+                        this.value = '';
+                        this.placeholder = '请输入IMAP授权码';
+                    }
+                });
+            }
+        }
+
+        // 加载邮箱配置
+        function loadEmailConfig() {
+            fetch('/api/email/config')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.config) {
+                        if (emailConfigUser) emailConfigUser.value = data.config.user || '';
+                        // 如果配置存在且有用户账号，说明已配置过，密码字段显示占位符
+                        if (emailConfigPassword) {
+                            if (data.config.user && data.config.user.trim() !== '') {
+                                // 已配置过，显示占位符
+                                emailConfigPassword.value = '********';
+                                emailConfigPassword.placeholder = '********';
+                            } else {
+                                // 未配置，显示原始占位符
+                                emailConfigPassword.value = '';
+                                emailConfigPassword.placeholder = '请输入IMAP授权码';
+                            }
+                        }
+                        if (emailConfigImapServer) emailConfigImapServer.value = data.config.imap_server || 'imap.qq.com';
+                        if (emailConfigImapPort) emailConfigImapPort.value = data.config.imap_port || 993;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载邮箱配置失败:', error);
+                });
+        }
+
+        // 保存邮箱配置
+        function saveEmailConfig() {
+            const config = {
+                user: emailConfigUser ? emailConfigUser.value.trim() : '',
+                password: emailConfigPassword ? emailConfigPassword.value.trim() : '',
+                imap_server: emailConfigImapServer ? emailConfigImapServer.value.trim() : 'imap.qq.com',
+                imap_port: emailConfigImapPort ? parseInt(emailConfigImapPort.value) : 993
+            };
+            
+            // 如果密码是占位符或为空，提示用户输入
+            if (!config.password || config.password === '********') {
+                addLog('error', '请填写授权码/密码');
+                if (emailConfigPassword) {
+                    emailConfigPassword.focus();
+                }
+                return;
+            }
+            
+            if (!config.user) {
+                addLog('error', '请填写邮箱账号');
+                if (emailConfigUser) {
+                    emailConfigUser.focus();
+                }
+                return;
+            }
+            
+            btnSaveEmailConfig.disabled = true;
+            btnSaveEmailConfig.textContent = '保存中...';
+            
+            fetch('/api/email/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .then(data => {
+                btnSaveEmailConfig.disabled = false;
+                btnSaveEmailConfig.textContent = '保存配置';
+                
+                if (data.success) {
+                    addLog('success', '邮箱配置已保存');
+                    // 保存成功后，将密码字段设置为占位符
+                    if (emailConfigPassword) {
+                        emailConfigPassword.value = '********';
+                        emailConfigPassword.placeholder = '********';
+                    }
+                    emailSettingsModal.classList.remove('active');
+                } else {
+                    addLog('error', `保存失败: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                btnSaveEmailConfig.disabled = false;
+                btnSaveEmailConfig.textContent = '保存配置';
+                addLog('error', `保存失败: ${error.message}`);
+            });
+        }
+
+        // 测试邮箱连接
+        function testEmailConnection() {
+            const config = {
+                user: emailConfigUser ? emailConfigUser.value.trim() : '',
+                password: emailConfigPassword ? emailConfigPassword.value.trim() : '',
+                imap_server: emailConfigImapServer ? emailConfigImapServer.value.trim() : 'imap.qq.com',
+                imap_port: emailConfigImapPort ? parseInt(emailConfigImapPort.value) : 993
+            };
+            
+            if (!config.user || !config.password) {
+                addLog('error', '请填写邮箱账号和授权码');
+                return;
+            }
+            
+            btnTestEmail.disabled = true;
+            btnTestEmail.textContent = '测试中...';
+            
+            fetch('/api/email/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .then(data => {
+                btnTestEmail.disabled = false;
+                btnTestEmail.textContent = '测试连接';
+                
+                if (data.success) {
+                    addLog('success', '邮箱连接测试成功');
+                } else {
+                    addLog('error', `连接测试失败: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                btnTestEmail.disabled = false;
+                btnTestEmail.textContent = '测试连接';
+                addLog('error', `连接测试失败: ${error.message}`);
+            });
+        }
+
+        // 页面加载完成后初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initEmailModal);
+        } else {
+            initEmailModal();
+        }
     </script>
 </body>
 </html>

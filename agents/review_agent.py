@@ -10,12 +10,13 @@ from crewai import Agent, Task
 from config import llm
 
 
-def create_reviewer_agent(expanded_keywords=None):
+def create_reviewer_agent(expanded_keywords=None, llm=None):
     """
     创建专业评审 Agent
     
     Args:
         expanded_keywords: 扩写后的研究方向描述（可选），用于定制agent的专业领域背景
+        llm: LLM实例（可选），如果不提供则使用默认的llm
     """
     # 根据扩写关键词生成backstory
     if expanded_keywords and expanded_keywords.strip():
@@ -34,13 +35,17 @@ def create_reviewer_agent(expanded_keywords=None):
     else:
         backstory = "你是一位在机器人学、控制理论、遥操作、机器人动力学和力控领域拥有丰富研究经验的评审专家。你能够从创新性、技术深度、相关性、实用性等多个维度对论文进行客观、专业的评价。你总是简洁明了地输出结果，不会重复说明。"
     
+    # 如果没有提供llm，使用默认的llm
+    from config import llm as default_llm
+    agent_llm = llm if llm is not None else default_llm
+    
     return Agent(
         role="专业评审专家",
         goal="对论文进行专业评审，生成结构化总结并给出简洁的4分制评分（只输出一次）",
         backstory=backstory,
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=agent_llm,
         max_iter=2,  # 减少迭代次数，避免重复
         max_execution_time=300
     )
