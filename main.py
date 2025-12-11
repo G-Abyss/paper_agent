@@ -414,6 +414,65 @@ def main(
         paper['multi_model_results'] = result.get('multi_model_results', {})  # 保存多模型评审结果
         paper['summary_result'] = result.get('summary_result')  # 保存汇总结果（如果有多个模型）
         
+        # 如果是本地CSV模式，更新数据库中的处理结果
+        current_local_mode = os.getenv('LOCAL', '0') == '1'
+        if current_local_mode:
+            try:
+                from utils.csv_importer import update_paper_processing_results
+                # 生成paper_id（基于标题，与csv_importer.py中的逻辑一致）
+                import hashlib
+                paper_title = paper.get('title', '')
+                if paper_title:
+                    paper_id = hashlib.md5(paper_title.encode('utf-8')).hexdigest()
+                    
+                    # 更新数据库
+                    success = update_paper_processing_results(
+                        paper_id=paper_id,
+                        translated_content=result.get('translated_content', ''),
+                        review=result.get('review', ''),
+                        score=result.get('score', 0.0)
+                    )
+                    if success:
+                        logging.info(f"已更新论文处理结果到数据库: {paper_title[:50]}")
+                    else:
+                        logging.warning(f"更新论文处理结果失败: {paper_title[:50]}")
+            except Exception as e:
+                logging.warning(f"更新论文处理结果到数据库失败: {str(e)}", exc_info=True)
+        
+        # 如果是邮箱模式，也更新数据库中的处理结果（在生成CSV时会统一导入，这里也更新以确保实时性）
+        if not current_local_mode:
+            try:
+                from utils.csv_importer import update_paper_processing_results
+                import hashlib
+                paper_title = paper.get('title', '')
+                if paper_title:
+                    paper_id = hashlib.md5(paper_title.encode('utf-8')).hexdigest()
+                    
+                    # 合并中文摘要和英文原文摘要
+                    translated_content = result.get('translated_content', '')
+                    original_english = paper.get('original_english_abstract', full_abstract if full_abstract else '')
+                    
+                    # 合并摘要
+                    abstract_combined = ''
+                    if translated_content and original_english:
+                        abstract_combined = f"{translated_content}\n\n[English Original]\n{original_english}"
+                    elif translated_content:
+                        abstract_combined = translated_content
+                    elif original_english:
+                        abstract_combined = f"[English Original]\n{original_english}"
+                    
+                    # 更新数据库
+                    success = update_paper_processing_results(
+                        paper_id=paper_id,
+                        translated_content=abstract_combined,
+                        review=result.get('review', ''),
+                        score=result.get('score', 0.0)
+                    )
+                    if success:
+                        logging.info(f"已更新论文处理结果到数据库（邮箱模式）: {paper_title[:50]}")
+            except Exception as e:
+                logging.warning(f"更新论文处理结果到数据库失败（邮箱模式）: {str(e)}", exc_info=True)
+        
         print(f"  ✓ 完成 - 评分: {paper['score']:.2f}/4.0", end="")
         if paper['is_high_value']:
             print(" [高价值论文 ⭐]")
@@ -544,6 +603,21 @@ def main(
     
     # 8. 导出所有符合关键词的论文到CSV（包含处理结果）
     csv_file = export_all_papers_to_csv(relevant_papers, output_dir)
+    
+    # 如果是邮箱模式，同步将数据导入数据库
+    LOCAL_MODE = os.getenv('LOCAL', '0') == '1'
+    if not LOCAL_MODE and csv_file:
+        try:
+            from utils.csv_importer import import_papers_from_email_csv
+            import_result = import_papers_from_email_csv(csv_file)
+            if import_result['success']:
+                log('info', f'已同步导入 {import_result["imported_count"]} 篇论文到数据库')
+            else:
+                log('warning', f'CSV导入数据库时出现问题: {import_result.get("error", "未知错误")}')
+        except Exception as e:
+            log('warning', f'CSV导入数据库失败: {str(e)}')
+            logging.warning(f"CSV导入数据库失败: {str(e)}", exc_info=True)
+    
     # 发送CSV文件生成回调
     if csv_file and on_file_generated:
         file_size = os.path.getsize(csv_file) if os.path.exists(csv_file) else 0

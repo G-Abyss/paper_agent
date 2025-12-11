@@ -1,0 +1,2528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据库管理 - Paper Summarizer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --neon-cyan: #00d9ff;
+            --neon-purple: #7b2cbf;
+            --neon-green: #0f0;
+            --neon-red: #ff0054;
+            --neon-orange: #ffaa00;
+            --dark-bg: #0a0e27;
+            --dark-panel: rgba(10, 20, 40, 0.7);
+            --dark-border: #00d9ff;
+        }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background: var(--dark-bg);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        /* 背景网格效果 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: var(--dark-panel);
+            border: 2px solid var(--dark-border);
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .btn-danger {
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 0, 84, 0.2);
+            box-shadow: 0 0 10px rgba(255, 0, 84, 0.3);
+        }
+
+        /* 操作按钮样式 */
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-action {
+            padding: 4px 8px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 4px;
+            color: var(--neon-cyan);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-action:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .btn-action.delete {
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .btn-action.delete:hover {
+            background: rgba(255, 0, 84, 0.2);
+        }
+
+        /* 可编辑单元格 */
+        .editable-cell {
+            cursor: pointer;
+            position: relative;
+            display: inline-block;
+            min-width: 100px;
+            min-height: 24px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .editable-cell:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        /* 摘要单元格特殊样式 */
+        .abstract-cell {
+            cursor: pointer;
+            width: 100%;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed rgba(0, 217, 255, 0.3);
+            border-radius: 6px;
+            transition: all 0.3s;
+            padding: 8px;
+        }
+
+        .abstract-cell:hover {
+            border-color: var(--neon-cyan);
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .abstract-cell.has-content {
+            border: 2px solid var(--neon-green);
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .abstract-cell.has-content:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        .abstract-cell .add-icon {
+            font-size: 24px;
+            color: rgba(0, 217, 255, 0.5);
+        }
+
+        .abstract-cell .check-icon {
+            font-size: 20px;
+            color: var(--neon-green);
+        }
+
+        /* 摘要编辑模态框 */
+        .abstract-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10001;
+            backdrop-filter: blur(5px);
+        }
+
+        .abstract-modal.active {
+            display: flex !important;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .abstract-modal-content {
+            background: var(--dark-panel);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(0, 217, 255, 0.5);
+            padding: 30px;
+        }
+
+        .abstract-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .abstract-modal-header h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            margin: 0;
+        }
+
+        .abstract-modal-close {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-size: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .abstract-modal-close:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .abstract-modal-body textarea {
+            width: 100%;
+            min-height: 300px;
+            padding: 15px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+        }
+
+        .abstract-modal-body textarea:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .abstract-modal-footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .editable-cell:empty::before {
+            content: '点击编辑';
+            color: rgba(255, 255, 255, 0.3);
+            font-style: italic;
+            pointer-events: none;
+        }
+        
+        /* 如果单元格只包含'-'，也显示提示 */
+        .editable-cell:has-text('-')::before {
+            content: '点击编辑';
+            color: rgba(255, 255, 255, 0.3);
+            font-style: italic;
+        }
+
+        /* 确保空单元格也有足够的点击区域 */
+        #papers-table tbody td .editable-cell {
+            width: 100%;
+            min-height: 32px;
+            display: inline-flex;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        
+        /* 空单元格占满整个td区域 */
+        #papers-table tbody td:has(.editable-cell:empty) {
+            padding: 12px;
+        }
+        
+        #papers-table tbody td .editable-cell:empty {
+            width: 100%;
+            min-height: 32px;
+        }
+
+        .editable-cell input,
+        .editable-cell textarea {
+            width: 100%;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 4px;
+            color: #fff;
+            padding: 4px 8px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+        }
+
+        .editable-cell input:focus,
+        .editable-cell textarea:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        /* 列管理模态框 */
+        .column-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            backdrop-filter: blur(5px);
+        }
+
+        .column-modal.active {
+            display: flex !important;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .column-modal-content {
+            background: var(--dark-panel);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(0, 217, 255, 0.5);
+            padding: 20px;
+        }
+
+        .column-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .column-modal-header h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            margin: 0;
+        }
+
+        .column-modal-close {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan);
+            font-size: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .column-modal-close:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .column-list {
+            margin-bottom: 20px;
+        }
+
+        .column-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 6px;
+        }
+
+        .column-item.fixed {
+            opacity: 0.6;
+        }
+
+        .column-item-name {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+        }
+
+        .column-item-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .column-modal-body {
+            margin-bottom: 20px;
+            padding: 15px 0;
+        }
+
+        .column-modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .add-column-form {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .add-column-form input {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .add-column-form input:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .add-column-form .form-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .add-column-form .form-row input {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .add-column-form .form-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .header h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+            margin: 0;
+        }
+
+        .table-container {
+            background: var(--dark-panel);
+            border: 2px solid var(--dark-border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+            overflow-x: visible;
+            overflow-y: visible;
+            width: 100%;
+        }
+
+        /* DataTables 容器样式 */
+        .dataTables_wrapper {
+            position: relative;
+            width: 100%;
+            overflow: visible;
+        }
+        
+        /* DataTables 自定义样式 */
+        #papers-table {
+            width: 100% !important;
+            border-collapse: collapse;
+            display: table !important;
+        }
+
+        #papers-table thead th {
+            background: rgba(0, 217, 255, 0.1);
+            color: var(--neon-cyan);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--neon-cyan);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        #papers-table thead th:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        #papers-table tbody td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+            min-height: 40px;
+            vertical-align: middle;
+            word-wrap: break-word;
+            max-width: 300px; /* 限制最大宽度，防止列过宽 */
+        }
+
+        #papers-table tbody tr:hover {
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        /* DataTables 搜索框和分页样式 */
+        .dataTables_wrapper {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .dataTables_wrapper .dataTables_filter {
+            margin-bottom: 15px;
+        }
+
+        .dataTables_wrapper .dataTables_filter input {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            padding: 8px 12px;
+            margin-left: 10px;
+        }
+
+        .dataTables_wrapper .dataTables_filter input:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .dataTables_wrapper .dataTables_length {
+            margin-bottom: 15px;
+        }
+
+        .dataTables_wrapper .dataTables_length select {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            padding: 6px 10px;
+            margin: 0 5px;
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: var(--neon-cyan) !important;
+            padding: 6px 12px;
+            margin: 0 2px;
+            cursor: pointer;
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: var(--neon-cyan);
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+            background: rgba(0, 217, 255, 0.3);
+            border-color: var(--neon-cyan);
+        }
+
+        .dataTables_wrapper .dataTables_info {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--neon-cyan);
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: var(--neon-red);
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 217, 255, 0.2);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 217, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 数据库管理</h1>
+            <div class="header-actions">
+                <div id="paper-count" style="color: rgba(255, 255, 255, 0.6); margin-right: 15px;">加载中...</div>
+                <button class="btn" id="btn-export-csv" onclick="exportToCSV()">导出CSV</button>
+                <button class="btn" id="btn-import-csv" onclick="openCSVUploadModal()">上传CSV</button>
+                <button class="btn btn-danger" id="btn-cleanup-pdfs" onclick="cleanupUnusedPDFs()">清理无用PDF</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <div id="loading" class="loading">正在加载论文列表...</div>
+            <div id="error" class="error" style="display: none;"></div>
+            <table id="papers-table" class="display">
+                <thead>
+                    <tr>
+                        <!-- 表头将由DataTables动态生成 -->
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 数据将通过DataTables动态加载 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- CSV上传模态框 -->
+    <div class="column-modal" id="csv-upload-modal">
+        <div class="column-modal-content">
+            <div class="column-modal-header">
+                <h3>上传CSV文件</h3>
+                <button class="column-modal-close" id="csv-upload-modal-close">✕</button>
+            </div>
+            <div class="column-modal-body">
+                <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 15px;">
+                    请选择CSV文件进行上传。系统将比对数据库并更新论文信息。
+                </p>
+                <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
+                <button class="btn" onclick="document.getElementById('csv-file-input').click()">选择文件</button>
+                <div id="csv-file-name" style="margin-top: 10px; color: rgba(255, 255, 255, 0.7);"></div>
+                <div id="csv-upload-status" style="margin-top: 15px;"></div>
+            </div>
+            <div class="column-modal-footer">
+                <button class="btn" onclick="closeCSVUploadModal()">取消</button>
+                <button class="btn btn-primary" id="btn-upload-csv" onclick="uploadCSV()" disabled>上传</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 列管理模态框（已禁用，保留用于兼容） -->
+    <div class="column-modal" id="column-modal" style="display: none;">
+        <div class="column-modal-content">
+            <div class="column-modal-header">
+                <h3>管理列</h3>
+                <button class="column-modal-close" id="column-modal-close">✕</button>
+            </div>
+            <div class="column-list" id="column-list">
+                <!-- 列列表将动态生成 -->
+            </div>
+            <div class="add-column-form">
+                <label class="form-label">中文名称：</label>
+                <input type="text" id="new-column-name-cn" placeholder="输入中文列名...">
+                <label class="form-label">英文名称：</label>
+                <input type="text" id="new-column-name-en" placeholder="输入英文列名（可选）...">
+                <button class="btn" onclick="addCustomColumn()">添加列</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 摘要查看模态框（只读） -->
+    <div class="abstract-modal" id="abstract-modal">
+        <div class="abstract-modal-content">
+            <div class="abstract-modal-header">
+                <h3>查看摘要</h3>
+                <button class="abstract-modal-close" id="abstract-modal-close">✕</button>
+            </div>
+            <div class="abstract-modal-body">
+                <div id="abstract-textarea" style="min-height: 200px; padding: 15px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(0, 217, 255, 0.3); border-radius: 8px; color: rgba(255, 255, 255, 0.9); white-space: pre-wrap; overflow-y: auto; max-height: 400px;"></div>
+            </div>
+            <div class="abstract-modal-footer">
+                <button class="btn" onclick="closeAbstractModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 确保jQuery已加载
+        if (typeof jQuery === 'undefined') {
+            document.write('<script src="https://code.jquery.com/jquery-3.7.1.min.js"><\/script>');
+        }
+
+        // 固定列定义（使用数据库字段名）
+        const FIXED_COLUMNS_DEF = {
+            'title': 'title',
+            'tag': 'tag',
+            'authors': 'authors',
+            'source': 'source',
+            'abstract': 'abstract',
+            'keywords': 'keywords',
+            'attachment_path': 'attachment_path'
+        };
+        
+        // 编辑模式已移除，界面仅用于数据展示
+        
+        // 固定列键名（用于内部逻辑）
+        const FIXED_COLUMNS = Object.keys(FIXED_COLUMNS_DEF);
+        
+        // 自定义列（存储在localStorage，格式：{key: '列名', display: '中文/English'})
+        let customColumns = JSON.parse(localStorage.getItem('customColumns') || '[]');
+        
+        // 当前显示的列（固定列：使用数据库字段名）
+        const FIXED_VISIBLE_COLUMNS = ['title', 'tag', 'keywords', 'authors', 'abstract', 'attachment_path'];
+        let visibleColumns = FIXED_VISIBLE_COLUMNS;
+        
+        // 获取列显示名称（使用数据库字段名）
+        function getColumnDisplayName(columnKey) {
+            // 直接返回字段名，不再使用中英文双语
+            return columnKey;
+        }
+        
+        // 获取列键名（从显示名称中提取）
+        function getColumnKey(displayName) {
+            // 如果是固定列，查找键名
+            for (const [key, display] of Object.entries(FIXED_COLUMNS_DEF)) {
+                if (display === displayName) {
+                    return key;
+                }
+            }
+            // 如果是自定义列，查找键名
+            const customCol = customColumns.find(col => col.display === displayName);
+            if (customCol) {
+                return customCol.key;
+            }
+            // 兼容旧数据：如果直接是键名，返回键名
+            if (FIXED_COLUMNS.includes(displayName)) {
+                return displayName;
+            }
+            return displayName;
+        }
+        
+        // 论文数据
+        let papersData = [];
+        let papersTable = null;
+
+        $(document).ready(function() {
+            loadPapersTable();
+            initColumnModal();
+            initAbstractModal();
+            initCSVUploadModal();
+        });
+
+        // 初始化列管理模态框
+        function initColumnModal() {
+            $('#column-modal-close').on('click', function() {
+                $('#column-modal').removeClass('active');
+            });
+            
+            $('#column-modal').on('click', function(e) {
+                if (e.target === this) {
+                    $(this).removeClass('active');
+                }
+            });
+        }
+
+        // 初始化摘要查看模态框（只读）
+        function initAbstractModal() {
+            $('#abstract-modal-close').on('click', function() {
+                closeAbstractModal();
+            });
+            
+            $('#abstract-modal').on('click', function(e) {
+                if (e.target === this) {
+                    closeAbstractModal();
+                }
+            });
+            
+            // ESC键关闭模态框
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && $('#abstract-modal').hasClass('active')) {
+                    closeAbstractModal();
+                }
+            });
+        }
+
+        // 打开列管理模态框
+        function openColumnModal() {
+            renderColumnList();
+            $('#column-modal').addClass('active');
+        }
+
+        // 渲染列列表
+        function renderColumnList() {
+            const columnList = $('#column-list');
+            columnList.empty();
+            
+            // 显示固定列
+            FIXED_COLUMNS.forEach(colKey => {
+                const displayName = getColumnDisplayName(colKey);
+                const item = $('<div class="column-item fixed"></div>');
+                item.html(`
+                    <span class="column-item-name">${displayName}</span>
+                    <span style="color: rgba(255, 255, 255, 0.4); font-size: 12px;">固定列</span>
+                `);
+                columnList.append(item);
+            });
+            
+            // 显示自定义列
+            customColumns.forEach(col => {
+                const displayName = col.display || col.key || col; // 兼容旧格式
+                const colKey = col.key || col; // 兼容旧格式
+                const item = $('<div class="column-item"></div>');
+                item.html(`
+                    <span class="column-item-name">${displayName}</span>
+                    <div class="column-item-actions">
+                        <button class="btn-action delete" onclick="removeCustomColumn('${colKey}')">删除</button>
+                    </div>
+                `);
+                columnList.append(item);
+            });
+        }
+
+        // 添加自定义列
+        function addCustomColumn() {
+            const cnName = $('#new-column-name-cn').val().trim();
+            const enName = $('#new-column-name-en').val().trim();
+            
+            if (!cnName) {
+                alert('请输入中文列名');
+                return;
+            }
+            
+            // 生成列键名（使用中文名，去除特殊字符）
+            const colKey = cnName.replace(/[\/\\]/g, '_');
+            
+            // 检查是否已存在
+            const existingCol = customColumns.find(col => {
+                const key = col.key || col;
+                return key === colKey;
+            });
+            
+            if (existingCol) {
+                alert('该列已存在');
+                return;
+            }
+            
+            // 检查固定列
+            if (FIXED_COLUMNS.includes(colKey)) {
+                alert('该列名与固定列冲突');
+                return;
+            }
+            
+            // 生成显示名称
+            const displayName = enName ? `${cnName}/${enName}` : cnName;
+            
+            // 添加到自定义列
+            const newCol = {
+                key: colKey,
+                display: displayName
+            };
+            customColumns.push(newCol);
+            localStorage.setItem('customColumns', JSON.stringify(customColumns));
+            
+            // 添加到可见列
+            if (!visibleColumns.includes(colKey)) {
+                visibleColumns.push(colKey);
+                localStorage.setItem('visibleColumns', JSON.stringify(visibleColumns));
+            }
+            
+            // 清空输入框
+            $('#new-column-name-cn').val('');
+            $('#new-column-name-en').val('');
+            
+            renderColumnList();
+            reloadTable();
+        }
+
+        // 删除自定义列
+        function removeCustomColumn(columnKey) {
+            if (FIXED_COLUMNS.includes(columnKey)) {
+                alert('固定列无法删除');
+                return;
+            }
+            
+            const col = customColumns.find(c => (c.key || c) === columnKey);
+            const displayName = col ? (col.display || col.key || col) : columnKey;
+            
+            if (confirm(`确定要删除列"${displayName}"吗？`)) {
+                customColumns = customColumns.filter(col => (col.key || col) !== columnKey);
+                visibleColumns = visibleColumns.filter(col => col !== columnKey);
+                localStorage.setItem('customColumns', JSON.stringify(customColumns));
+                localStorage.setItem('visibleColumns', JSON.stringify(visibleColumns));
+                renderColumnList();
+                reloadTable();
+            }
+        }
+
+        // 同步表头和表体的滚动和列宽
+        function syncScroll() {
+            const $scrollBody = $('.dataTables_scrollBody');
+            const $scrollHead = $('.dataTables_scrollHead');
+            const $scrollHeadInner = $('.dataTables_scrollHeadInner');
+            const $scrollBodyInner = $('.dataTables_scrollBody table');
+            
+            if ($scrollBody.length && $scrollHead.length && papersTable) {
+                // 使用 DataTables API 调整列宽，确保表头和表体列宽一致
+                try {
+                    papersTable.columns.adjust();
+                } catch (e) {
+                    console.warn('调整列宽时出错:', e);
+                }
+                
+                // 确保表头和表体的表格宽度一致
+                const bodyTable = $scrollBodyInner;
+                const headTable = $scrollHeadInner.find('table');
+                
+                if (bodyTable.length && headTable.length) {
+                    // 方法1：使用 DataTables API 获取列宽（最准确）
+                    try {
+                        const columnCount = papersTable.columns().count();
+                        for (let i = 0; i < columnCount; i++) {
+                            const column = papersTable.column(i);
+                            const $bodyCells = bodyTable.find('tbody tr:first-child td').eq(i);
+                            const $headCells = headTable.find('thead tr:first-child th').eq(i);
+                            
+                            if ($bodyCells.length && $headCells.length) {
+                                // 使用 offsetWidth 获取更准确的宽度（不包括滚动条）
+                                const bodyWidth = $bodyCells[0].offsetWidth;
+                                
+                                if (bodyWidth > 0) {
+                                    $headCells.css({
+                                        'width': bodyWidth + 'px',
+                                        'min-width': bodyWidth + 'px',
+                                        'max-width': bodyWidth + 'px',
+                                        'box-sizing': 'border-box'
+                                    });
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('使用 DataTables API 同步列宽失败，使用备用方法:', e);
+                    }
+                    
+                    // 方法2：直接同步 tbody 第一行的列宽到 thead（备用方法）
+                    const bodyFirstRow = bodyTable.find('tbody tr:first-child');
+                    const headFirstRow = headTable.find('thead tr:first-child');
+                    
+                    if (bodyFirstRow.length && headFirstRow.length) {
+                        const bodyCells = bodyFirstRow.find('td');
+                        const headCells = headFirstRow.find('th');
+                        
+                        if (bodyCells.length === headCells.length) {
+                            bodyCells.each(function(cellIndex) {
+                                const bodyCell = this;
+                                const $headCell = headCells.eq(cellIndex);
+                                // 使用 offsetWidth 获取更准确的宽度
+                                const bodyWidth = bodyCell.offsetWidth;
+                                
+                                if (bodyWidth > 0) {
+                                    $headCell.css({
+                                        'width': bodyWidth + 'px',
+                                        'min-width': bodyWidth + 'px',
+                                        'max-width': bodyWidth + 'px',
+                                        'box-sizing': 'border-box'
+                                    });
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 方法3：同步表头行的列宽（额外保险）
+                    const bodyHeaderRows = bodyTable.find('thead tr');
+                    const headHeaderRows = headTable.find('thead tr');
+                    
+                    if (bodyHeaderRows.length === headHeaderRows.length) {
+                        bodyHeaderRows.each(function(rowIndex) {
+                            const $bodyRow = $(this);
+                            const $headRow = headHeaderRows.eq(rowIndex);
+                            const bodyCells = $bodyRow.find('th, td');
+                            const headCells = $headRow.find('th, td');
+                            
+                            if (bodyCells.length === headCells.length) {
+                                bodyCells.each(function(cellIndex) {
+                                    const bodyCell = this;
+                                    const $headCell = headCells.eq(cellIndex);
+                                    const bodyWidth = bodyCell.offsetWidth;
+                                    
+                                    if (bodyWidth > 0) {
+                                        $headCell.css({
+                                            'width': bodyWidth + 'px',
+                                            'min-width': bodyWidth + 'px',
+                                            'max-width': bodyWidth + 'px',
+                                            'box-sizing': 'border-box'
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    
+                    // 确保表头表格总宽度与表体一致
+                    const bodyWidth = bodyTable[0].offsetWidth;
+                    const headWidth = headTable[0].offsetWidth;
+                    
+                    if (bodyWidth && headWidth && Math.abs(bodyWidth - headWidth) > 1) {
+                        headTable.css('width', bodyWidth + 'px');
+                        $scrollHeadInner.css('width', bodyWidth + 'px');
+                    }
+                }
+                
+                // 表体滚动时，同步表头（使用 requestAnimationFrame 确保流畅）
+                $scrollBody.off('scroll.sync').on('scroll.sync', function() {
+                    const scrollLeft = this.scrollLeft;
+                    requestAnimationFrame(function() {
+                        $scrollHead[0].scrollLeft = scrollLeft;
+                        $scrollHeadInner[0].scrollLeft = scrollLeft;
+                    });
+                });
+                
+                // 表头滚动时，同步表体
+                $scrollHead.off('scroll.sync').on('scroll.sync', function() {
+                    const scrollLeft = this.scrollLeft;
+                    requestAnimationFrame(function() {
+                        $scrollBody[0].scrollLeft = scrollLeft;
+                    });
+                });
+                
+                // scrollHeadInner 滚动时，同步表体
+                $scrollHeadInner.off('scroll.sync').on('scroll.sync', function() {
+                    const scrollLeft = this.scrollLeft;
+                    requestAnimationFrame(function() {
+                        $scrollBody[0].scrollLeft = scrollLeft;
+                    });
+                });
+            }
+        }
+
+        // 重新加载表格
+        let isReloading = false; // 防止无限循环
+        
+        function reloadTable() {
+            if (isReloading) {
+                console.warn('表格正在重新加载中，跳过重复请求');
+                return;
+            }
+            
+            isReloading = true;
+            let $table = $('#papers-table');
+            
+            // 检查表格是否存在
+            if ($table.length === 0) {
+                console.error('表格元素不存在！尝试重新创建...');
+                // 尝试从父容器中查找或重新创建
+                const $container = $('#table-container, .table-container, #main-content').first();
+                if ($container.length > 0) {
+                    $container.append('<table id="papers-table" class="display"><thead><tr></tr></thead><tbody></tbody></table>');
+                    $table = $('#papers-table');
+                } else {
+                    console.error('无法找到表格容器，无法重新创建表格！');
+                    isReloading = false;
+                    return;
+                }
+            }
+            
+            // 保存表格的父容器和位置，以便之后恢复
+            const $parent = $table.parent();
+            const tableIndex = $table.index();
+            
+            // 如果表格已初始化，先销毁
+            if (papersTable) {
+                try {
+                    papersTable.destroy(true); // true 参数表示完全清理
+                    papersTable = null;
+                } catch (e) {
+                    console.warn('销毁表格时出错:', e);
+                    papersTable = null;
+                }
+            }
+            
+            // 清理所有 DataTables 相关的 DOM 结构
+            // DataTables 的结构通常是：
+            // .dataTables_wrapper
+            //   .dataTables_scrollHead
+            //     .dataTables_scrollHeadInner
+            //       table (原始表格的副本，用于表头)
+            //   .dataTables_scrollBody
+            //     table#papers-table (原始表格)
+            //   .dataTables_scrollFoot (如果有)
+            
+            // 关键：在清理之前，先保存表格的引用并把它从 DataTables 结构中移出
+            const $scrollBody = $table.closest('.dataTables_scrollBody');
+            const $wrapper = $table.closest('.dataTables_wrapper');
+            const $container = $('.table-container');
+            
+            // 如果表格在滚动体中（scrollX 模式），需要先把它移出来
+            if ($scrollBody.length > 0) {
+                console.log('表格在 scrollBody 中，先移出表格');
+                // 使用 detach() 从 DOM 中移除但保留 jQuery 对象和所有数据
+                $table.detach();
+                // 立即把表格放回容器，避免丢失
+                if ($container.length > 0) {
+                    // 确保容器中没有重复的表格
+                    $container.find('#papers-table').remove();
+                    $container.append($table);
+                    console.log('表格已放回容器');
+                }
+                // 现在可以安全地移除 wrapper（表格已经不在其中了）
+                if ($wrapper.length > 0) {
+                    $wrapper.remove();
+                }
+            } else if ($wrapper.length > 0) {
+                console.log('表格在 wrapper 中，直接解包');
+                // 如果表格在 wrapper 中但不在 scrollBody 中，直接解包
+                $table.unwrap();
+            }
+            
+            // 现在表格已经不在 DataTables 结构中了，可以安全地清理所有 DataTables 元素
+            // 移除所有剩余的 DataTables 相关元素（确保清理干净）
+            $('.dataTables_wrapper').remove();
+            $('.dataTables_scrollHead').remove();
+            $('.dataTables_scrollBody').remove();
+            $('.dataTables_scrollFoot').remove();
+            
+            // 重新获取表格元素，确保它还在 DOM 中
+            $table = $('#papers-table');
+            if ($table.length === 0) {
+                console.error('表格在清理过程中被删除！尝试恢复...');
+                // 尝试在 .table-container 中恢复表格
+                const $container = $('.table-container');
+                if ($container.length > 0) {
+                    // 移除容器中的 loading 和 error 元素（如果存在），然后添加表格
+                    $container.find('#papers-table').remove(); // 确保没有重复
+                    $container.append('<table id="papers-table" class="display"><thead><tr></tr></thead><tbody></tbody></table>');
+                    $table = $('#papers-table');
+                    console.log('表格已恢复');
+                } else if ($parent.length > 0) {
+                    // 如果找不到容器，尝试在原来的父元素中恢复
+                    $parent.append('<table id="papers-table" class="display"><thead><tr></tr></thead><tbody></tbody></table>');
+                    $table = $('#papers-table');
+                    console.log('表格已在原父元素中恢复');
+                } else {
+                    console.error('无法恢复表格！找不到合适的容器');
+                    isReloading = false;
+                    return;
+                }
+            }
+            
+            // 移除 DataTables 相关的类和属性
+            $table.removeClass('dataTable');
+            $table.removeAttr('role');
+            $table.removeAttr('style'); // 移除可能影响显示的样式
+            
+            // 清理 thead 和 tbody
+            $table.find('thead').empty();
+            $table.find('tbody').empty();
+            
+            // 恢复初始的表格结构
+            if ($table.find('thead').length === 0) {
+                $table.prepend('<thead><tr><!-- 表头将由DataTables动态生成 --></tr></thead>');
+            } else {
+                $table.find('thead').html('<tr><!-- 表头将由DataTables动态生成 --></tr>');
+            }
+            
+            if ($table.find('tbody').length === 0) {
+                $table.append('<tbody><!-- 数据将通过DataTables动态加载 --></tbody>');
+            } else {
+                $table.find('tbody').html('<!-- 数据将通过DataTables动态加载 -->');
+            }
+            
+            // 确保表格可见
+            $table.show().css({
+                'display': 'table',
+                'visibility': 'visible',
+                'opacity': '1'
+            });
+            
+            // 等待一小段时间确保清理完成
+            setTimeout(function() {
+                loadPapersTable();
+                // 重置标志，允许下次重新加载
+                setTimeout(function() {
+                    isReloading = false;
+                }, 1000);
+            }, 100);
+        }
+
+        // 加载论文表格数据
+        function loadPapersTable() {
+            // 从后端获取论文列表
+            fetch('/api/papers/list')
+                .then(response => response.json())
+                .then(data => {
+                    $('#loading').hide();
+                    
+                    if (data.success) {
+                        papersData = data.papers || [];
+                        
+                        console.log('加载的论文数据:', papersData.length, '篇');
+                        
+                        // 更新论文数量
+                        $('#paper-count').text(`共 ${papersData.length} 篇论文`);
+                        
+                        // 构建列配置
+                        const columns = buildColumns();
+                        const tableData = buildTableData(papersData);
+                        
+                        console.log('列配置数量:', columns.length);
+                        console.log('表格数据行数:', tableData.length);
+                        
+                        // 确保表格容器存在且没有被初始化
+                        const $table = $('#papers-table');
+                        
+                        // 检查是否已经初始化
+                        if ($.fn.DataTable.isDataTable($table)) {
+                            try {
+                                console.log('销毁已有表格');
+                                $table.DataTable().destroy();
+                            } catch (e) {
+                                console.warn('销毁已有表格时出错:', e);
+                            }
+                        }
+                        
+                        // 确保表格结构完整
+                        if ($table.find('thead').length === 0) {
+                            $table.prepend('<thead><tr><!-- 表头将由DataTables动态生成 --></tr></thead>');
+                        }
+                        if ($table.find('tbody').length === 0) {
+                            $table.append('<tbody><!-- 数据将通过DataTables动态加载 --></tbody>');
+                        }
+                        
+                        // 确保表格可见
+                        $table.show();
+                        $('#error').hide();
+                        
+                        // 检查数据是否为空
+                        if (!tableData || tableData.length === 0) {
+                            console.warn('表格数据为空');
+                            $('#error').text('没有数据可显示').show();
+                            $table.hide();
+                            return;
+                        }
+                        
+                        // 检查列配置是否为空
+                        if (!columns || columns.length === 0) {
+                            console.error('列配置为空');
+                            $('#error').text('列配置错误').show();
+                            $table.hide();
+                            return;
+                        }
+                        
+                        console.log('开始初始化DataTables...');
+                        
+                        // 初始化DataTables
+                        try {
+                            // 确保表格容器可见且结构完整
+                            $table.css({
+                                'display': 'table',
+                                'visibility': 'visible',
+                                'opacity': '1'
+                            });
+                            
+                            // 确保表格结构完整
+                            if ($table.find('thead').length === 0) {
+                                $table.prepend('<thead><tr></tr></thead>');
+                            }
+                            if ($table.find('tbody').length === 0) {
+                                $table.append('<tbody></tbody>');
+                            }
+                            
+                            papersTable = $table.DataTable({
+                            data: tableData,
+                            columns: columns,
+                            language: {
+                                search: '搜索:',
+                                lengthMenu: '显示 _MENU_ 条记录',
+                                info: '显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项',
+                                infoEmpty: '显示第 0 至 0 项结果，共 0 项',
+                                infoFiltered: '(从 _MAX_ 条记录中筛选)',
+                                paginate: {
+                                    first: '首页',
+                                    previous: '上一页',
+                                    next: '下一页',
+                                    last: '末页'
+                                },
+                                emptyTable: '暂无数据',
+                                zeroRecords: '没有匹配的记录'
+                            },
+                            pageLength: 25,
+                            order: [[0, 'asc']],
+                            dom: '<"top"lf>rt<"bottom"ip>',
+                            scrollX: false,              // 禁用横向滚动
+                            scrollCollapse: false,       // 不折叠空行
+                            autoWidth: true,             // 使用自动宽度，让表格适应容器
+                            fixedColumns: false,         // 不使用固定列
+                            scrollY: false,              // 不使用纵向滚动（使用分页）
+                            columnDefs: [
+                                {
+                                    targets: '_all',
+                                    className: 'text-left'
+                                }
+                            ],
+                            deferRender: false,  // 立即渲染所有行，确保列宽计算准确
+                            initComplete: function(settings, json) {
+                                console.log('DataTables initComplete 回调执行');
+                                console.log('数据行数:', json ? json.data.length : 'N/A');
+                                
+                                // 确保表格可见
+                                const $wrapper = $('.dataTables_wrapper');
+                                if ($wrapper.length) {
+                                    $wrapper.show().css({
+                                        'display': 'block',
+                                        'visibility': 'visible',
+                                        'opacity': '1'
+                                    });
+                                } else {
+                                    console.error('DataTables wrapper 未创建！');
+                                }
+                                
+                                // 横向滚动已禁用，无需检查滚动容器
+                                
+                                // 确保原始表格可见
+                                $table.show().css({
+                                    'display': 'table',
+                                    'visibility': 'visible',
+                                    'opacity': '1'
+                                });
+                                
+                                 // 横向滚动已禁用，无需同步
+                            },
+                            drawCallback: function(settings) {
+                                console.log('DataTables drawCallback 回调执行');
+                                const api = this.api();
+                                const rows = api.rows({page: 'current'}).nodes().length;
+                                console.log('当前页行数:', rows);
+                                
+                                 // 横向滚动已禁用，无需同步
+                            }
+                        });
+                        
+                         // 横向滚动已禁用，无需监听滚动事件
+                        
+                        console.log('DataTables初始化成功，实例:', papersTable);
+                        
+                        // 检查表格是否真的显示了
+                        setTimeout(function() {
+                            // 重新获取表格元素，确保在作用域内
+                            const $tableCheck = $('#papers-table');
+                            const isVisible = $tableCheck.is(':visible');
+                            const scrollBody = $('.dataTables_scrollBody');
+                            const scrollWrapper = $('.dataTables_wrapper');
+                            const scrollHead = $('.dataTables_scrollHead');
+                            const hasRows = scrollBody.find('tbody tr').length > 0 || $tableCheck.find('tbody tr').length > 0;
+                            
+                            const status = { 
+                                isVisible, 
+                                hasRows, 
+                                tableRows: $tableCheck.find('tbody tr').length,
+                                scrollWrapperExists: scrollWrapper.length > 0,
+                                scrollWrapperVisible: scrollWrapper.is(':visible'),
+                                tableDataLength: tableData.length,
+                                columnsLength: columns.length
+                            };
+                            
+                            console.log('表格状态检查:', status);
+                            
+                            // 如果包装器不存在，说明 DataTables 初始化失败
+                            if (!scrollWrapper.length) {
+                                console.error('DataTables 包装器未创建，初始化可能失败！');
+                                console.error('表格元素:', $tableCheck[0]);
+                                console.error('表格父元素:', $tableCheck.parent()[0]);
+                                console.error('表格是否存在:', $tableCheck.length > 0);
+                                console.error('表格显示状态:', $tableCheck.is(':visible'));
+                                // 不进行重新初始化，避免无限循环
+                                return;
+                            }
+                            
+                            // 强制显示所有相关元素
+                            if (!isVisible) {
+                                console.warn('表格不可见，强制显示');
+                                $tableCheck.show().css({
+                                    'display': 'table',
+                                    'visibility': 'visible',
+                                    'opacity': '1'
+                                });
+                            }
+                            
+                            if (scrollWrapper.length > 0) {
+                                if (!scrollWrapper.is(':visible')) {
+                                    console.warn('DataTables包装器不可见，强制显示');
+                                }
+                                scrollWrapper.show().css('display', 'block');
+                            }
+                            
+                            // 检查数据是否正确渲染
+                            if (!hasRows && tableData.length > 0) {
+                                console.warn('表格没有行数据，但tableData不为空');
+                                console.warn('tableData示例（第一行）:', tableData[0]);
+                                console.warn('列配置示例（第一列）:', columns[0]);
+                                console.warn('tableData长度:', tableData.length);
+                                console.warn('columns长度:', columns.length);
+                                
+                                if (papersTable && !isReloading) {
+                                    try {
+                                        // 检查表格实例状态
+                                        const api = papersTable;
+                                        const currentData = api.rows().data().toArray();
+                                        console.warn('当前表格数据行数:', currentData.length);
+                                        
+                                        // 如果当前没有数据，重新添加
+                                        if (currentData.length === 0) {
+                                            console.log('表格数据为空，重新添加数据...');
+                                            api.clear();
+                                            api.rows.add(tableData);
+                                            api.draw(false);
+                                            console.log('重新绘制完成');
+                                            
+                                            // 再次检查
+                                            setTimeout(function() {
+                                                const $tableCheck2 = $('#papers-table');
+                                                const newHasRows = $tableCheck2.find('tbody tr').length > 0;
+                                                console.log('重新绘制后行数:', $tableCheck2.find('tbody tr').length);
+                                                if (!newHasRows && !isReloading) {
+                                                    console.error('重新绘制后仍然没有行数据！');
+                                                    // 不再自动重新初始化，避免无限循环
+                                                    console.error('请手动刷新页面或检查数据格式');
+                                                }
+                                            }, 300);
+                                        } else {
+                                            console.warn('表格已有数据，但DOM中没有行，可能是渲染问题');
+                                            api.draw(false);
+                                        }
+                                    } catch (e) {
+                                        console.error('重新绘制失败:', e);
+                                        console.error('错误堆栈:', e.stack);
+                                    }
+                                } else {
+                                    if (isReloading) {
+                                        console.warn('表格正在重新加载中，跳过数据检查');
+                                    } else {
+                                        console.error('papersTable 实例不存在！');
+                                    }
+                                }
+                            }
+                        }, 500);
+                        
+                        } catch (initError) {
+                            console.error('DataTables初始化失败:', initError);
+                            console.error('错误堆栈:', initError.stack);
+                            $('#error').text('表格初始化失败: ' + initError.message).show();
+                            $table.hide();
+                        }
+                    } else {
+                        $('#loading').hide();
+                        $('#error').text('加载论文列表失败: ' + (data.error || '未知错误')).show();
+                        $('#papers-table').hide();
+                    }
+                })
+                .catch(error => {
+                    $('#loading').hide();
+                    $('#error').text('获取论文列表出错: ' + error.message).show();
+                    $('#papers-table').hide();
+                    console.error('获取论文列表出错:', error);
+                });
+        }
+
+        // 构建列配置
+        function buildColumns() {
+            const columns = [];
+            
+            visibleColumns.forEach((colKey, index) => {
+                const colName = getColumnDisplayName(colKey);
+                
+                // 确保 colName 是字符串
+                if (!colName || typeof colName !== 'string') {
+                    console.warn('列名无效:', colKey, colName);
+                    return; // 跳过无效列
+                }
+                
+                if (colKey === 'attachment_path') {
+                    columns.push({
+                        title: colName || 'attachment_path',
+                        orderable: false,
+                        width: getColumnWidth(colKey),  // 使用统一的列宽函数
+                        render: function(data, type, row) {
+                            // paper_id在最后一列（只读模式）
+                            const paperIdIndex = row.length - 1;
+                            const paperId = row[paperIdIndex];
+                            const paper = papersData.find(p => p.paper_id === paperId);
+                            const pdfPath = paper?.attachment_path || '';
+                            if (pdfPath) {
+                                return `<span style="color: var(--neon-green);">✓ 有PDF</span>`;
+                            } else {
+                                return `<span style="color: rgba(255, 255, 255, 0.4);">-</span>`;
+                            }
+                        }
+                    });
+                } else if (colKey === 'abstract') {
+                    // 摘要列特殊处理：显示图标，双击可查看
+                    const width = getColumnWidth(colKey);
+                    columns.push({
+                        title: colName || 'abstract',
+                        orderable: false,
+                        width: width || '100px',
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                // paper_id在最后一列
+                                const paperIdIndex = row.length - 1;
+                                const paperId = row[paperIdIndex];
+                                const hasContent = data && data !== '-' && data.trim() !== '';
+                                // 只读模式：双击查看摘要
+                                if (hasContent) {
+                                    return `<div class="abstract-cell has-content" data-paper-id="${paperId}" ondblclick="openAbstractModal('${paperId}')" title="双击查看摘要">
+                                        <span class="check-icon">✓</span>
+                                    </div>`;
+                                } else {
+                                    return `<div class="abstract-cell" style="opacity: 0.5;" title="无摘要">
+                                        <span class="add-icon" style="opacity: 0.3;">-</span>
+                                    </div>`;
+                                }
+                            }
+                            return data || '-';
+                        }
+                    });
+                } else {
+                    // 只读模式，所有列都不可编辑
+                    const width = getColumnWidth(colKey);
+                    columns.push({
+                        title: colName || colKey,  // 确保title是字符串
+                        orderable: colKey !== 'abstract',
+                        width: width || '150px',  // 使用统一的列宽函数
+                        render: function(data, type, row) {
+                            // 只读模式，直接显示文本
+                            return data || '-';
+                        }
+                    });
+                }
+            });
+            
+            // 添加"操作"列（包含删除按钮）
+            columns.push({
+                title: 'actions',
+                orderable: false,
+                width: getColumnWidth('操作'),  // 使用统一的列宽函数
+                render: function(data, type, row) {
+                    // paper_id在最后一列
+                    const paperIdIndex = row.length - 1;
+                    const paperId = row[paperIdIndex];
+                    return `<button class="btn-action delete" onclick="deletePaper('${paperId}')" title="删除此论文">删除</button>`;
+                }
+            });
+            
+            // 添加隐藏的paper_id列（必须在最后）
+            columns.push({
+                title: 'paper_id',
+                visible: false,
+                width: '0px'  // 隐藏列也需要设置width，避免DataTables解析错误
+            });
+            
+            console.log('构建完成，总列数:', columns.length);
+            // 验证所有列配置
+            columns.forEach((col, idx) => {
+                if (!col.title || typeof col.title !== 'string') {
+                    console.error('列配置错误 - 索引:', idx, '配置:', col);
+                }
+                if (col.width !== undefined && typeof col.width !== 'string') {
+                    console.error('列宽度配置错误 - 索引:', idx, 'width:', col.width, '类型:', typeof col.width);
+                }
+            });
+            return columns;
+        }
+
+        // 构建表格数据
+        function buildTableData(papers) {
+            console.log('构建表格数据，论文数量:', papers.length, '可见列数:', visibleColumns.length);
+            const result = papers.map(paper => {
+                const row = [];
+                visibleColumns.forEach(colKey => {
+                    if (colKey === 'attachment_path') {
+                        row.push(''); // 这些列由render函数生成
+                    } else if (colKey === 'abstract') {
+                        // 摘要列：传递完整摘要内容（不截断），由render函数处理显示
+                        let value = getFieldValue(paper, colKey);
+                        row.push(value || '');
+                    } else {
+                        let value = getFieldValue(paper, colKey);
+                        row.push(value || '-');
+                    }
+                });
+                row.push(''); // 操作列的占位数据（由render函数生成）
+                row.push(paper.paper_id); // 添加paper_id用于操作（隐藏列）
+                return row;
+            });
+            const expectedCols = visibleColumns.length + 2; // 可见列 + 操作列 + paper_id
+            console.log('表格数据构建完成，行数:', result.length, '每行列数:', result[0] ? result[0].length : 0, '期望列数:', expectedCols);
+            if (result[0] && result[0].length !== expectedCols) {
+                console.error('列数不匹配！数据行有', result[0].length, '列，但期望', expectedCols, '列');
+            }
+            return result;
+        }
+
+        // 获取字段值
+        function getFieldValue(paper, colKey) {
+            let value = '';
+            
+            // 直接使用colKey作为字段名（已经是数据库字段名）
+            if (colKey === 'authors' && Array.isArray(paper[colKey])) {
+                value = paper[colKey].join(', ');
+            } else if (colKey === 'keywords' && Array.isArray(paper[colKey])) {
+                value = paper[colKey].join(', ');
+            } else if (colKey in paper) {
+                // 标准字段
+                value = paper[colKey] || '';
+            } else {
+                // 自定义列（从metadata中获取）
+                const metadata = paper.metadata || {};
+                value = metadata[colKey] || '';
+            }
+            
+            return value || '';
+        }
+
+        // 获取字段名
+        function getFieldName(colKey) {
+            const fieldMap = {
+                '标题': 'title',
+                '标签': 'tag',
+                '作者': 'authors',
+                '摘要': 'abstract',
+                '关键词': 'keywords'
+            };
+            return fieldMap[colKey] || colKey.toLowerCase();
+        }
+
+        // 获取列宽度（使用固定像素值，确保列宽合适且能在一行显示）
+        function getColumnWidth(colKey) {
+            const widthMap = {
+                'title': '200px',           // 标题列
+                'tag': '120px',            // 标签列
+                'keywords': '180px',        // 关键词列
+                'authors': '180px',         // 作者列
+                'abstract': '100px',        // 摘要列显示图标，较窄
+                'attachment_path': '100px', // PDF标识列，较窄
+                '操作': '80px'              // 操作列，只显示删除按钮
+            };
+            return widthMap[colKey] || '150px'; // 自定义列默认150px
+        }
+
+        // 编辑功能已移除，以下函数保留但不再使用
+        function editCell(cell) {
+            const $cell = $(cell);
+            
+            // 检查是否已经在编辑状态（包含input或textarea元素）
+            if ($cell.find('input, textarea').length > 0) {
+                return; // 如果已经在编辑，不重复触发
+            }
+            
+            const paperId = $cell.data('paper-id');
+            const field = $cell.data('field');
+            let currentValue = $cell.text().trim();
+            
+            // 处理"点击编辑"提示文本
+            if (currentValue === '点击编辑' || currentValue === '-') {
+                currentValue = '';
+            }
+            
+            const isLongText = field === 'abstract';
+            
+            let input;
+            if (isLongText) {
+                input = $('<textarea rows="3"></textarea>');
+            } else {
+                input = $('<input type="text">');
+            }
+            
+            input.val(currentValue);
+            input.css({
+                width: '100%',
+                minWidth: '200px',
+                minHeight: '32px',
+                padding: '4px 8px'
+            });
+            
+            $cell.html(input);
+            input.focus();
+            input.select();
+            
+            // 阻止事件冒泡，防止双击触发
+            input.on('dblclick', function(e) {
+                e.stopPropagation();
+            });
+            
+            const saveEdit = function() {
+                const newValue = input.val().trim();
+                updatePaperField(paperId, field, newValue);
+                // 恢复为可编辑的span
+                if (newValue) {
+                    $cell.text(newValue);
+                } else {
+                    $cell.text(''); // 空字符串，让:empty伪类生效显示"点击编辑"
+                }
+                // 确保保持可编辑状态和属性
+                $cell.attr('onclick', `editCell(this)`);
+                $cell.attr('data-paper-id', paperId);
+                $cell.attr('data-field', field);
+            };
+            
+            const cancelEdit = function() {
+                // 恢复为可编辑的span，保持原始值
+                if (currentValue) {
+                    $cell.text(currentValue);
+                } else {
+                    $cell.text(''); // 空字符串，让:empty伪类生效显示"点击编辑"
+                }
+                // 确保保持可编辑状态和属性
+                $cell.attr('onclick', `editCell(this)`);
+                $cell.attr('data-paper-id', paperId);
+                $cell.attr('data-field', field);
+            };
+            
+            input.on('blur', saveEdit);
+            input.on('keydown', function(e) {
+                if (e.key === 'Enter' && !isLongText) {
+                    e.preventDefault();
+                    input.blur(); // 触发blur事件，保存编辑
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEdit();
+                }
+            });
+        }
+
+        // 打开摘要查看模态框（只读）
+        function openAbstractModal(paperId) {
+            const paper = papersData.find(p => p.paper_id === paperId);
+            if (!paper) {
+                alert('未找到该论文');
+                return;
+            }
+            
+            const currentAbstract = paper.abstract || '暂无摘要';
+            const $modal = $('#abstract-modal');
+            const $abstractDiv = $('#abstract-textarea');
+            
+            $abstractDiv.text(currentAbstract);
+            $modal.data('paper-id', paperId);
+            $modal.addClass('active');
+        }
+
+        // 关闭摘要查看模态框
+        function closeAbstractModal() {
+            const $modal = $('#abstract-modal');
+            $modal.removeClass('active');
+        }
+
+        // 删除论文
+        function deletePaper(paperId) {
+            if (!confirm('确定要删除这篇论文吗？此操作不可恢复！')) {
+                return;
+            }
+            
+            fetch('/api/papers/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    paper_id: paperId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 从本地数据中移除
+                    papersData = papersData.filter(p => p.paper_id !== paperId);
+                    
+                    // 更新论文数量
+                    $('#paper-count').text(`共 ${papersData.length} 篇论文`);
+                    
+                    // 重新加载表格
+                    reloadTable();
+                    
+                    console.log('删除成功');
+                } else {
+                    alert('删除失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('删除失败:', error);
+                alert('删除失败: ' + error.message);
+            });
+        }
+
+        // 更新论文字段
+        function updatePaperField(paperId, field, value) {
+            fetch('/api/papers/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    paper_id: paperId,
+                    field: field,
+                    value: value
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 更新本地数据
+                    const paper = papersData.find(p => p.paper_id === paperId);
+                    if (paper) {
+                        if (['title', 'tag', 'authors', 'abstract', 'keywords'].includes(field)) {
+                            paper[field] = value;
+                        } else {
+                            // 自定义字段存储在metadata中
+                            if (!paper.metadata) {
+                                paper.metadata = {};
+                            }
+                            paper.metadata[field] = value;
+                        }
+                    }
+                    console.log('更新成功');
+                } else {
+                    alert('更新失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('更新失败:', error);
+                alert('更新失败: ' + error.message);
+            });
+        }
+
+        // 导出CSV（导出数据库中的所有字段）
+        function exportToCSV() {
+            if (!papersData || papersData.length === 0) {
+                alert('没有数据可导出');
+                return;
+            }
+            
+            // 定义所有数据库字段（标准字段，使用数据库字段名）
+            const standardFields = [
+                { key: 'paper_id', label: 'paper_id' },
+                { key: 'title', label: 'title' },
+                { key: 'authors', label: 'authors' },
+                { key: 'abstract', label: 'abstract' },
+                { key: 'keywords', label: 'keywords' },
+                { key: 'year', label: 'year' },
+                { key: 'journal', label: 'journal' },
+                { key: 'doi', label: 'doi' },
+                { key: 'url', label: 'url' },
+                { key: 'source', label: 'source' },
+                { key: 'source_id', label: 'source_id' },
+                { key: 'attachment_path', label: 'attachment_path' },
+                { key: 'zotero_key', label: 'zotero_key' },
+                { key: 'obsidian_note_path', label: 'obsidian_note_path' },
+                { key: 'created_at', label: 'created_at' },
+                { key: 'updated_at', label: 'updated_at' }
+            ];
+            
+            // 收集所有metadata中的自定义字段（从所有论文中收集）
+            const customFieldsSet = new Set();
+            papersData.forEach(paper => {
+                const metadata = paper.metadata || {};
+                if (metadata && typeof metadata === 'object') {
+                    Object.keys(metadata).forEach(key => {
+                        // 排除已经在标准字段中的字段
+                        if (!standardFields.find(f => f.key === key)) {
+                            customFieldsSet.add(key);
+                        }
+                    });
+                }
+            });
+            
+            console.log('收集到的自定义字段:', Array.from(customFieldsSet));
+            
+            // 将自定义字段转换为数组并排序
+            const customFields = Array.from(customFieldsSet).sort().map(key => ({
+                key: key,
+                label: key  // 使用字段名作为标签
+            }));
+            
+            // 合并所有字段
+            const allFields = [...standardFields, ...customFields];
+            const headers = allFields.map(f => f.label);
+            
+            console.log('导出CSV的字段列表:', headers);
+            
+            // 构建CSV内容
+            let csvContent = headers.join(',') + '\n';
+            
+            papersData.forEach(paper => {
+                const row = [];
+                allFields.forEach(field => {
+                    let value = '';
+                    
+                    if (field.key === 'paper_id') {
+                        value = paper.paper_id || '';
+                    } else if (field.key === 'title') {
+                        value = paper.title || paper.paper_title || '';
+                    } else if (field.key === 'authors') {
+                        // authors可能是数组或字符串
+                        if (Array.isArray(paper.authors)) {
+                            value = paper.authors.join('; ');
+                        } else if (typeof paper.authors === 'string') {
+                            value = paper.authors;
+                        } else {
+                            value = '';
+                        }
+                    } else if (field.key === 'abstract') {
+                        value = paper.abstract || '';
+                    } else if (field.key === 'keywords') {
+                        // keywords可能是数组或字符串
+                        if (Array.isArray(paper.keywords)) {
+                            value = paper.keywords.join('; ');
+                        } else if (typeof paper.keywords === 'string') {
+                            value = paper.keywords;
+                        } else {
+                            value = '';
+                        }
+                    } else if (field.key === 'attachment_path') {
+                        // PDF路径：显示相对路径（相对于database目录）
+                        const pdfPath = paper.attachment_path || paper.paper_path || '';
+                        if (pdfPath) {
+                            // 提取相对路径（database/文件名）
+                            const parts = pdfPath.replace(/\\/g, '/').split('/');
+                            const dbIndex = parts.indexOf('database');
+                            if (dbIndex >= 0 && dbIndex < parts.length - 1) {
+                                value = 'database/' + parts.slice(dbIndex + 1).join('/');
+                            } else {
+                                value = pdfPath;
+                            }
+                        }
+                    } else if (field.key === 'created_at' || field.key === 'updated_at') {
+                        // 时间字段，直接使用原始值
+                        value = paper[field.key] || '';
+                    } else if (standardFields.find(f => f.key === field.key)) {
+                        // 其他标准字段
+                        value = paper[field.key] || '';
+                    } else {
+                        // 自定义字段（从metadata中获取）
+                        const metadata = paper.metadata || {};
+                        if (metadata && typeof metadata === 'object') {
+                            const fieldValue = metadata[field.key];
+                            if (fieldValue !== undefined && fieldValue !== null) {
+                                // 如果是对象或数组，转换为JSON字符串
+                                if (typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
+                                    value = JSON.stringify(fieldValue);
+                                } else if (Array.isArray(fieldValue)) {
+                                    value = fieldValue.join('; ');
+                                } else {
+                                    value = String(fieldValue);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // CSV转义：如果包含逗号、引号或换行符，需要用引号包裹，并转义引号
+                    const stringValue = String(value || '');
+                    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n') || stringValue.includes('\r')) {
+                        value = '"' + stringValue.replace(/"/g, '""') + '"';
+                    } else {
+                        value = stringValue;
+                    }
+                    row.push(value);
+                });
+                csvContent += row.join(',') + '\n';
+            });
+            
+            // 创建下载链接
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' }); // 添加BOM以支持Excel中文
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `papers_all_data_${new Date().toISOString().slice(0, 10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // 打开CSV上传模态框
+        function openCSVUploadModal() {
+            $('#csv-upload-modal').addClass('active');
+            $('#csv-file-input').val('');
+            $('#csv-file-name').text('');
+            $('#csv-upload-status').html('');
+            $('#btn-upload-csv').prop('disabled', true);
+        }
+
+        // 关闭CSV上传模态框
+        function closeCSVUploadModal() {
+            $('#csv-upload-modal').removeClass('active');
+        }
+
+        // 初始化CSV上传模态框
+        function initCSVUploadModal() {
+            // 文件选择事件 - 立即进行比较
+            $('#csv-file-input').on('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    $('#csv-file-name').text('已选择: ' + file.name);
+                    $('#btn-upload-csv').prop('disabled', true).text('比较中...');
+                    $('#csv-upload-status').html('<div style="color: rgba(0, 217, 255, 0.8);">正在比较CSV文件与数据库...</div>');
+                    
+                    // 立即进行比较
+                    compareCSVFile(file);
+                } else {
+                    $('#csv-file-name').text('');
+                    $('#csv-upload-status').html('');
+                    $('#btn-upload-csv').prop('disabled', true).text('上传');
+                }
+            });
+            
+            // 关闭按钮
+            $('#csv-upload-modal-close').on('click', closeCSVUploadModal);
+            
+            // 点击模态框外部关闭
+            $('#csv-upload-modal').on('click', function(e) {
+                if (e.target === this) {
+                    closeCSVUploadModal();
+                }
+            });
+        }
+        
+        // 比较CSV文件（不更新数据库）- 调用后端API
+        async function compareCSVFile(file) {
+            try {
+                const formData = new FormData();
+                formData.append('csv_file', file);
+                
+                const response = await fetch('/api/papers/compare_csv', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let statusHtml = '<div style="color: rgba(0, 217, 255, 0.9);">';
+                    statusHtml += `📊 比较完成<br>`;
+                    statusHtml += `共 ${data.total_rows || 0} 行数据<br>`;
+                    statusHtml += `发现 ${data.total_differences || 0} 条记录有差异<br><br>`;
+                    
+                    // 显示新列
+                    if (data.new_columns && data.new_columns.length > 0) {
+                        statusHtml += `<div style="color: #fbbf24; margin-top: 10px;">
+                            📋 检测到 ${data.new_columns.length} 个新列：<br>`;
+                        data.new_columns.forEach(col => {
+                            statusHtml += `&nbsp;&nbsp;• ${col.name || col}<br>`;
+                        });
+                        statusHtml += `</div>`;
+                    }
+                    
+                    // 显示差异详情（最多显示前10条）
+                    if (data.differences && data.differences.length > 0) {
+                        statusHtml += `<div style="margin-top: 15px; max-height: 300px; overflow-y: auto; border: 1px solid rgba(0, 217, 255, 0.3); padding: 10px; border-radius: 6px;">`;
+                        statusHtml += `<strong style="color: rgba(0, 217, 255, 0.9);">差异详情：</strong><br>`;
+                        
+                        const showCount = Math.min(10, data.differences.length);
+                        for (let i = 0; i < showCount; i++) {
+                            const diff = data.differences[i];
+                            statusHtml += `<div style="margin-top: 8px; padding: 8px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">`;
+                            statusHtml += `<strong>${diff.title || diff.paper_id}</strong><br>`;
+                            diff.differences.forEach(fieldDiff => {
+                                statusHtml += `&nbsp;&nbsp;• <span style="color: #fbbf24;">${fieldDiff.field}</span>: `;
+                                const oldVal = String(fieldDiff.old_value || '').substring(0, 30);
+                                const newVal = String(fieldDiff.new_value || '').substring(0, 30);
+                                statusHtml += `<span style="color: #f87171;">"${oldVal}${String(fieldDiff.old_value || '').length > 30 ? '...' : ''}"</span> → `;
+                                statusHtml += `<span style="color: #4ade80;">"${newVal}${String(fieldDiff.new_value || '').length > 30 ? '...' : ''}"</span><br>`;
+                            });
+                            statusHtml += `</div>`;
+                        }
+                        
+                        if (data.differences.length > 10) {
+                            statusHtml += `<div style="margin-top: 8px; color: rgba(255, 255, 255, 0.6); font-size: 12px;">... 还有 ${data.differences.length - 10} 条差异未显示</div>`;
+                        }
+                        statusHtml += `</div>`;
+                    } else {
+                        statusHtml += `<div style="color: #4ade80; margin-top: 10px;">✓ 未发现差异，数据与数据库一致</div>`;
+                    }
+                    
+                    statusHtml += '</div>';
+                    $('#csv-upload-status').html(statusHtml);
+                    
+                    // 启用上传按钮
+                    $('#btn-upload-csv').prop('disabled', false).text('确认上传');
+                } else {
+                    $('#csv-upload-status').html(`<div style="color: #f87171;">比较失败: ${data.error || '未知错误'}</div>`);
+                    $('#btn-upload-csv').prop('disabled', true).text('上传');
+                }
+            } catch (error) {
+                console.error('比较CSV失败:', error);
+                $('#csv-upload-status').html(`<div style="color: #f87171;">比较失败: ${error.message}</div>`);
+                $('#btn-upload-csv').prop('disabled', true).text('上传');
+            }
+        }
+
+        // 读取CSV文件并比较差异（已废弃，保留用于兼容）
+        function compareCSVWithDatabase(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const text = e.target.result;
+                        const lines = text.split('\n');
+                        if (lines.length < 2) {
+                            reject(new Error('CSV文件至少需要表头和数据行'));
+                            return;
+                        }
+                        
+                        // 解析CSV（简单实现，处理引号和逗号）
+                        const parseCSVLine = (line) => {
+                            const result = [];
+                            let current = '';
+                            let inQuotes = false;
+                            for (let i = 0; i < line.length; i++) {
+                                const char = line[i];
+                                if (char === '"') {
+                                    if (inQuotes && line[i + 1] === '"') {
+                                        current += '"';
+                                        i++; // 跳过下一个引号
+                                    } else {
+                                        inQuotes = !inQuotes;
+                                    }
+                                } else if (char === ',' && !inQuotes) {
+                                    result.push(current.trim());
+                                    current = '';
+                                } else {
+                                    current += char;
+                                }
+                            }
+                            result.push(current.trim());
+                            return result;
+                        };
+                        
+                        // 解析表头
+                        const headers = parseCSVLine(lines[0]);
+                        const headerMap = {};
+                        headers.forEach((h, i) => {
+                            headerMap[h] = i;
+                        });
+                        
+                        // 字段映射
+                        const fieldMapping = {
+                            '标题/Title': 'title',
+                            '标题': 'title',
+                            'Title': 'title',
+                            '标签/Tag': 'tag',
+                            '标签': 'tag',
+                            'Tag': 'tag',
+                            '作者/Authors': 'authors',
+                            '作者': 'authors',
+                            'Authors': 'authors',
+                            '来源/Source': 'source',
+                            '来源': 'source',
+                            'Source': 'source',
+                            '摘要/Abstract': 'abstract',
+                            '摘要': 'abstract',
+                            'Abstract': 'abstract',
+                            '关键词/Keywords': 'keywords',
+                            '关键词': 'keywords',
+                            'Keywords': 'keywords',
+                            '全文PDF/Full PDF': 'pdf_path',
+                            '全文PDF': 'pdf_path',
+                            'Full PDF': 'pdf_path'
+                        };
+                        
+                        // 构建数据库字段到CSV列的映射
+                        const dbFieldToCSVCol = {};
+                        Object.keys(fieldMapping).forEach(csvHeader => {
+                            const dbField = fieldMapping[csvHeader];
+                            if (headerMap.hasOwnProperty(csvHeader)) {
+                                dbFieldToCSVCol[dbField] = headerMap[csvHeader];
+                            }
+                        });
+                        
+                        // 创建论文查找索引（基于标题和PDF路径）
+                        const paperIndex = {};
+                        papersData.forEach(paper => {
+                            const key = (paper.title || paper.paper_title || '') + '|' + (paper.attachment_path || paper.paper_path || '');
+                            paperIndex[key] = paper;
+                        });
+                        
+                        // 解析数据行并比较差异
+                        const differences = [];
+                        for (let i = 1; i < lines.length; i++) {
+                            const line = lines[i].trim();
+                            if (!line) continue;
+                            
+                            const values = parseCSVLine(line);
+                            if (values.length !== headers.length) {
+                                console.warn(`CSV第${i + 1}行列数不匹配，跳过`);
+                                continue;
+                            }
+                            
+                            // 获取标题和PDF路径用于匹配
+                            const titleCol = dbFieldToCSVCol['title'];
+                            const pdfCol = dbFieldToCSVCol['pdf_path'];
+                            const title = titleCol !== undefined ? values[titleCol] : '';
+                            let pdfPath = pdfCol !== undefined ? values[pdfCol] : '';
+                            
+                            // 处理PDF路径（相对路径转绝对路径）
+                            if (pdfPath && pdfPath.startsWith('database/')) {
+                                pdfPath = pdfPath; // 保持相对路径，后端会处理
+                            }
+                            
+                            // 查找匹配的论文
+                            const matchKey = title + '|' + pdfPath;
+                            const existingPaper = paperIndex[matchKey];
+                            
+                            if (!existingPaper) {
+                                // 尝试通过标题单独匹配
+                                const titleMatch = papersData.find(p => 
+                                    (p.title || p.paper_title || '').trim() === title.trim()
+                                );
+                                if (titleMatch) {
+                                    differences.push({
+                                        paper_id: titleMatch.paper_id,
+                                        row_index: i + 1,
+                                        changes: {}
+                                    });
+                                    // 继续比较字段差异
+                                    Object.keys(dbFieldToCSVCol).forEach(dbField => {
+                                        const csvColIndex = dbFieldToCSVCol[dbField];
+                                        if (csvColIndex !== undefined) {
+                                            const csvValue = values[csvColIndex] || '';
+                                            let dbValue = '';
+                                            
+                                            if (dbField === 'title') {
+                                                dbValue = titleMatch.title || titleMatch.paper_title || '';
+                                            } else if (dbField === 'authors') {
+                                                dbValue = Array.isArray(titleMatch.authors) 
+                                                    ? titleMatch.authors.join(', ') 
+                                                    : (titleMatch.authors || '');
+                                            } else if (dbField === 'keywords') {
+                                                dbValue = Array.isArray(titleMatch.keywords) 
+                                                    ? titleMatch.keywords.join(', ') 
+                                                    : (titleMatch.keywords || '');
+                                            } else if (dbField === 'pdf_path') {
+                                                dbValue = titleMatch.attachment_path || titleMatch.paper_path || '';
+                                                // 转换为相对路径进行比较
+                                                if (dbValue) {
+                                                    const parts = dbValue.replace(/\\/g, '/').split('/');
+                                                    const dbIndex = parts.indexOf('database');
+                                                    if (dbIndex >= 0) {
+                                                        dbValue = 'database/' + parts.slice(dbIndex + 1).join('/');
+                                                    }
+                                                }
+                                            } else {
+                                                dbValue = titleMatch[dbField] || '';
+                                            }
+                                            
+                                            // 比较值是否不同
+                                            if (csvValue.trim() !== dbValue.trim()) {
+                                                differences[differences.length - 1].changes[dbField] = csvValue.trim();
+                                            }
+                                        }
+                                    });
+                                    
+                                    // 检测新列（不在fieldMapping中的列）
+                                    headers.forEach((header, colIndex) => {
+                                        if (!fieldMapping.hasOwnProperty(header) && values[colIndex]) {
+                                            const csvValue = values[colIndex].trim();
+                                            if (csvValue) {
+                                                // 检查metadata中是否有这个字段
+                                                const metadata = titleMatch.metadata || {};
+                                                const dbValue = metadata[header] || '';
+                                                
+                                                // 如果CSV中有值但数据库中没有，或者值不同，则标记为差异
+                                                if (csvValue !== dbValue) {
+                                                    differences[differences.length - 1].changes[header] = csvValue;
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                                continue;
+                            }
+                            
+                            // 比较字段差异
+                            const changes = {};
+                            
+                            // 比较已知字段
+                            Object.keys(dbFieldToCSVCol).forEach(dbField => {
+                                const csvColIndex = dbFieldToCSVCol[dbField];
+                                if (csvColIndex !== undefined) {
+                                    const csvValue = values[csvColIndex] || '';
+                                    let dbValue = '';
+                                    
+                                    if (dbField === 'title') {
+                                        dbValue = existingPaper.title || existingPaper.paper_title || '';
+                                    } else if (dbField === 'authors') {
+                                        dbValue = Array.isArray(existingPaper.authors) 
+                                            ? existingPaper.authors.join(', ') 
+                                            : (existingPaper.authors || '');
+                                    } else if (dbField === 'keywords') {
+                                        dbValue = Array.isArray(existingPaper.keywords) 
+                                            ? existingPaper.keywords.join(', ') 
+                                            : (existingPaper.keywords || '');
+                                    } else if (dbField === 'pdf_path') {
+                                        dbValue = existingPaper.attachment_path || existingPaper.paper_path || '';
+                                        // 转换为相对路径进行比较
+                                        if (dbValue) {
+                                            const parts = dbValue.replace(/\\/g, '/').split('/');
+                                            const dbIndex = parts.indexOf('database');
+                                            if (dbIndex >= 0) {
+                                                dbValue = 'database/' + parts.slice(dbIndex + 1).join('/');
+                                            }
+                                        }
+                                    } else {
+                                        dbValue = existingPaper[dbField] || '';
+                                    }
+                                    
+                                    // 比较值是否不同
+                                    if (csvValue.trim() !== dbValue.trim()) {
+                                        changes[dbField] = csvValue.trim();
+                                    }
+                                }
+                            });
+                            
+                            // 检测新列（不在fieldMapping中的列）
+                            headers.forEach((header, colIndex) => {
+                                if (!fieldMapping.hasOwnProperty(header) && values[colIndex]) {
+                                    const csvValue = values[colIndex].trim();
+                                    if (csvValue) {
+                                        // 检查metadata中是否有这个字段
+                                        const metadata = existingPaper.metadata || {};
+                                        const dbValue = metadata[header] || '';
+                                        
+                                        // 如果CSV中有值但数据库中没有，或者值不同，则标记为差异
+                                        if (csvValue !== dbValue) {
+                                            changes[header] = csvValue; // 使用列名作为key
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            // 如果有差异，添加到差异列表
+                            if (Object.keys(changes).length > 0) {
+                                differences.push({
+                                    paper_id: existingPaper.paper_id,
+                                    row_index: i + 1,
+                                    changes: changes
+                                });
+                            }
+                        }
+                        
+                        // 检测新列（不在fieldMapping中的列）
+                        const newColumns = [];
+                        headers.forEach(header => {
+                            if (!fieldMapping.hasOwnProperty(header)) {
+                                newColumns.push({
+                                    name: header,
+                                    display: header
+                                });
+                            }
+                        });
+                        
+                        resolve({
+                            total_rows: lines.length - 1,
+                            differences: differences,
+                            headers: headers,
+                            new_columns: newColumns  // 返回新列信息
+                        });
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        // 上传CSV（后端处理比较和更新）
+        // 清理无用PDF文件
+        async function cleanupUnusedPDFs() {
+            if (!confirm('确定要清理无用的PDF文件吗？\n\n此操作将删除database目录中不在数据库attachment_path字段中的PDF文件。\n此操作不可撤销！')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btn-cleanup-pdfs');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '清理中...';
+            
+            try {
+                const response = await fetch('/api/papers/cleanup_unused_pdfs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const deletedCount = data.deleted_files?.length || 0;
+                    const totalSize = data.total_size_mb || 0;
+                    let message = `清理完成！\n\n已删除 ${deletedCount} 个无用PDF文件`;
+                    if (totalSize > 0) {
+                        message += `\n释放空间: ${totalSize.toFixed(2)} MB`;
+                    }
+                    
+                    if (data.deleted_files && data.deleted_files.length > 0) {
+                        message += `\n\n删除的文件：\n${data.deleted_files.slice(0, 10).join('\n')}`;
+                        if (data.deleted_files.length > 10) {
+                            message += `\n... 还有 ${data.deleted_files.length - 10} 个文件`;
+                        }
+                    }
+                    
+                    alert(message);
+                } else {
+                    alert(`清理失败: ${data.error || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error('清理PDF失败:', error);
+                alert(`清理失败: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        async function uploadCSV() {
+            const fileInput = document.getElementById('csv-file-input');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('请先选择CSV文件');
+                return;
+            }
+            
+            $('#btn-upload-csv').prop('disabled', true).text('上传中...');
+            $('#csv-upload-status').html('<div style="color: rgba(0, 217, 255, 0.8);">正在上传CSV文件，系统将自动比较并更新数据库...</div>');
+            
+            try {
+                // 直接上传文件，后端会生成标准CSV并比较
+                const formData = new FormData();
+                formData.append('csv_file', file);
+                
+                const response = await fetch('/api/papers/upload_csv', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let statusHtml = `<div style="color: #4ade80;">
+                        ✅ 同步成功！<br>
+                        更新了 ${data.updated || 0} 条记录<br>
+                        ${data.skipped || 0} 条记录跳过`;
+                    
+                    // 处理新列
+                    if (data.new_columns && data.new_columns.length > 0) {
+                        statusHtml += `<br><br>📋 检测到 ${data.new_columns.length} 个新列：<br>`;
+                        data.new_columns.forEach(col => {
+                            statusHtml += `&nbsp;&nbsp;• ${col.name || col}<br>`;
+                        });
+                        statusHtml += `</div>`;
+                    } else {
+                        statusHtml += `</div>`;
+                    }
+                    
+                    $('#csv-upload-status').html(statusHtml);
+                    
+                    // 重新加载表格
+                    setTimeout(function() {
+                        loadPapersTable();
+                        closeCSVUploadModal();
+                    }, 2000);
+                } else {
+                    $('#csv-upload-status').html(`<div style="color: #f87171;">上传失败: ${data.error || '未知错误'}</div>`);
+                    $('#btn-upload-csv').prop('disabled', false).text('上传');
+                }
+            } catch (error) {
+                console.error('处理失败:', error);
+                $('#csv-upload-status').html(`<div style="color: #f87171;">处理失败: ${error.message}</div>`);
+                $('#btn-upload-csv').prop('disabled', false).text('上传');
+            }
+        }
+    </script>
+</body>
+</html>
+

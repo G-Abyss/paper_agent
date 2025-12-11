@@ -58,3 +58,6 @@ model_config.json
 # 本地邮件数据
 data/emails.json
 email_config.json
+
+# 本地数据库论文
+database/

@@ -7,6 +7,7 @@ Agent基础配置和工具
 from crewai.tools import tool
 from config import llm
 from utils.file_utils import extract_real_url_from_redirect, is_pdf_url
+from typing import Optional, List, Dict
 import requests
 import re
 import os
@@ -226,4 +227,596 @@ def arxiv_download_tool(paper_url: str, paper_title: str = "") -> str:
 
 # 创建工具对象引用（保持向后兼容）
 fetch_webpage_tool = fetch_webpage_content
+
+
+@tool("RAG论文查询工具")
+def rag_paper_query_tool(query: str, n_results: int = 5, paper_id: str = "") -> str:
+    """
+    使用RAG（检索增强生成）在已存储的论文中查询相关信息。
+    
+    输入参数：
+    - query (字符串，必需): 用户的问题或查询内容
+    - n_results (整数，可选): 返回结果数量，默认5
+    - paper_id (字符串，可选): 指定论文ID，如果为空字符串则搜索所有论文
+    """
+    try:
+        from utils.vector_db import search_similar_chunks
+        
+        # 搜索相似文本块（如果paper_id为空字符串，则搜索所有论文）
+        results = search_similar_chunks(query, n_results=n_results, paper_id=paper_id if paper_id else None)
+        
+        if not results:
+            # 提供更详细的错误信息
+            from utils.vector_db import get_paper_list
+            papers = get_paper_list()
+            if not papers:
+                return f"未找到与查询 '{query}' 相关的论文内容。数据库中没有存储任何论文，请先上传PDF论文。"
+            else:
+                return f"未找到与查询 '{query}' 相关的论文内容。\n\n提示：\n- 当前数据库中有 {len(papers)} 篇论文\n- 可以尝试使用英文关键词搜索\n- 或者先使用'获取论文列表工具'查看有哪些论文"
+        
+        # 格式化结果
+        response_parts = [f"找到 {len(results)} 个相关片段：\n"]
+        for i, result in enumerate(results, 1):
+            metadata = result.get('metadata', {})
+            paper_title = metadata.get('paper_title', '未知标题')
+            paper_path = metadata.get('paper_path', '')
+            chunk_index = metadata.get('chunk_index', 0)
+            distance = result.get('distance', 0)
+            
+            response_parts.append(f"\n[片段 {i}] (相关性: {1-distance:.3f})")
+            response_parts.append(f"论文: {paper_title}")
+            response_parts.append(f"内容: {result['content'][:500]}...")
+            if i < len(results):
+                response_parts.append("---")
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        logging.error(f"RAG查询失败: {str(e)}")
+        return f"RAG查询出错: {str(e)}"
+
+
+@tool("获取论文列表工具")
+def get_paper_list_tool() -> str:
+    """
+    获取向量数据库中所有已存储的论文列表，包括论文数量、标题和ID。
+    这个工具用于回答关于论文库中论文数量、论文列表等问题。
+    
+    不需要输入参数。
+    """
+    try:
+        from utils.vector_db import get_paper_list
+        
+        papers = get_paper_list()
+        
+        if not papers:
+            return "当前论文库中没有存储任何论文。"
+        
+        # 格式化结果
+        response_parts = [f"论文库中共有 {len(papers)} 篇论文：\n"]
+        for i, paper in enumerate(papers, 1):
+            paper_id = paper.get('paper_id', '未知ID')
+            paper_title = paper.get('paper_title', '未知标题')
+            paper_path = paper.get('paper_path', '')
+            
+            response_parts.append(f"\n[{i}] {paper_title}")
+            response_parts.append(f"   ID: {paper_id}")
+            if paper_path:
+                response_parts.append(f"   路径: {paper_path}")
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        logging.error(f"获取论文列表失败: {str(e)}")
+        return f"获取论文列表出错: {str(e)}"
+
+
+@tool("获取论文详细信息工具")
+def get_paper_details_tool(paper_id: str) -> str:
+    """
+    获取指定论文的详细信息，包括所有文本块的内容摘要。
+    这个工具用于深入了解某篇论文的完整内容。
+    
+    输入参数：
+    - paper_id (字符串，必需): 论文ID，可以通过获取论文列表工具获取
+    """
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查询论文基本信息
+            cur.execute("""
+                SELECT title, attachment_path, source, metadata
+                FROM papers
+                WHERE paper_id = %s
+            """, (paper_id,))
+            paper_info = cur.fetchone()
+            
+            if not paper_info:
+                return f"未找到ID为 '{paper_id}' 的论文。"
+            
+            # 查询该论文的所有块
+            cur.execute("""
+                SELECT chunk_index, chunk_text
+                FROM paper_chunks
+                WHERE paper_id = %s
+                ORDER BY chunk_index
+            """, (paper_id,))
+            chunks = cur.fetchall()
+            
+            # 格式化结果
+            paper_title = paper_info['title'] or '未知标题'
+            paper_path = paper_info['attachment_path'] or ''
+            
+            response_parts = [
+                f"论文信息：\n",
+                f"标题: {paper_title}\n",
+                f"ID: {paper_id}\n",
+                f"文本块数量: {len(chunks)}\n"
+            ]
+            
+            if paper_path:
+                response_parts.append(f"路径: {paper_path}\n")
+            
+            response_parts.append(f"\n内容概览（前3个块）：\n")
+            
+            # 显示前3个块的内容摘要
+            for i, chunk in enumerate(chunks[:3], 1):
+                chunk_index = chunk['chunk_index']
+                content_preview = chunk['chunk_text'][:300] + "..." if len(chunk['chunk_text']) > 300 else chunk['chunk_text']
+                response_parts.append(f"\n[块 {chunk_index + 1}]")
+                response_parts.append(f"{content_preview}\n")
+            
+            if len(chunks) > 3:
+                response_parts.append(f"\n... 还有 {len(chunks) - 3} 个文本块未显示")
+            
+            return "\n".join(response_parts)
+            
+        finally:
+            return_db_connection(conn)
+        
+    except Exception as e:
+        logging.error(f"获取论文详细信息失败: {str(e)}")
+        return f"获取论文详细信息出错: {str(e)}"
+
+
+@tool("读取PDF文件工具")
+def read_pdf_file_tool(pdf_path: str, max_pages: int = 10) -> str:
+    """
+    直接从文件路径读取PDF文件内容。
+    这个工具用于读取PDF文件的原始文本内容，特别是当需要查看完整PDF内容时。
+    
+    输入参数：
+    - pdf_path (字符串，必需): PDF文件的完整路径
+    - max_pages (整数，可选): 最大读取页数，默认10页。如果为0或负数，则读取所有页面。
+    """
+    try:
+        import fitz  # PyMuPDF
+        
+        if not os.path.exists(pdf_path):
+            return f"PDF文件不存在: {pdf_path}"
+        
+        try:
+            doc = fitz.open(pdf_path)
+            full_text = ""
+            
+            # 获取总页数
+            total_pages = len(doc)
+            
+            # 确定要读取的页数
+            if max_pages <= 0:
+                pages_to_read = total_pages
+            else:
+                pages_to_read = min(max_pages, total_pages)
+            
+            # 提取文本
+            for page_num in range(pages_to_read):
+                page = doc[page_num]
+                page_text = page.get_text()
+                full_text += f"\n\n--- 第 {page_num + 1} 页 ---\n\n"
+                full_text += page_text
+            
+            doc.close()
+            
+            # 清理NUL字符
+            full_text = full_text.replace('\x00', '').replace('\0', '')
+            
+            # 限制返回长度（避免超出上下文限制）
+            max_length = 10000
+            original_length = len(full_text)
+            if original_length > max_length:
+                full_text = full_text[:max_length] + f"\n\n... (已截断，总长度: {original_length} 字符，仅显示前 {max_length} 字符)"
+            
+            return f"PDF文件内容（共读取 {pages_to_read} 页，总页数: {total_pages} 页）：\n\n{full_text}"
+            
+        except Exception as e:
+            logging.error(f"读取PDF文件失败: {pdf_path}, 错误: {str(e)}")
+            return f"读取PDF文件失败: {str(e)}"
+            
+    except ImportError:
+        return "PyMuPDF未安装，无法读取PDF文件。请运行: pip install PyMuPDF"
+    except Exception as e:
+        logging.error(f"读取PDF文件工具出错: {str(e)}")
+        return f"读取PDF文件出错: {str(e)}"
+
+
+@tool("按作者查询论文工具")
+def search_papers_by_author_tool(author_name: str, limit: int = 10) -> str:
+    """
+    根据作者姓名查询论文列表。
+    这个工具用于查找特定作者的所有论文。
+    
+    输入参数：
+    - author_name (字符串，必需): 作者姓名（支持部分匹配）
+    - limit (整数，可选): 返回的最大结果数，默认10
+    """
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查询包含指定作者的论文（authors是数组字段）
+            cur.execute("""
+                SELECT paper_id, title, authors, abstract, year, journal, keywords, attachment_path
+                FROM papers
+                WHERE authors IS NOT NULL 
+                AND EXISTS (
+                    SELECT 1 FROM unnest(authors) AS author 
+                    WHERE LOWER(author) LIKE LOWER(%s)
+                )
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (f'%{author_name}%', limit))
+            
+            papers = cur.fetchall()
+            
+            if not papers:
+                return f"未找到作者 '{author_name}' 的论文。"
+            
+            response_parts = [f"找到 {len(papers)} 篇作者包含 '{author_name}' 的论文：\n"]
+            for i, paper in enumerate(papers, 1):
+                response_parts.append(f"\n[{i}] {paper['title'] or '未知标题'}")
+                response_parts.append(f"   ID: {paper['paper_id']}")
+                if paper['authors']:
+                    authors_str = ', '.join(paper['authors']) if isinstance(paper['authors'], list) else str(paper['authors'])
+                    response_parts.append(f"   作者: {authors_str}")
+                if paper['year']:
+                    response_parts.append(f"   年份: {paper['year']}")
+                if paper['journal']:
+                    response_parts.append(f"   期刊: {paper['journal']}")
+                if paper['abstract']:
+                    abstract_preview = paper['abstract'][:200] + "..." if len(paper['abstract']) > 200 else paper['abstract']
+                    response_parts.append(f"   摘要: {abstract_preview}")
+            
+            return "\n".join(response_parts)
+            
+        finally:
+            return_db_connection(conn)
+    except Exception as e:
+        logging.error(f"按作者查询论文失败: {str(e)}")
+        return f"按作者查询论文出错: {str(e)}"
+
+
+@tool("按关键词查询论文工具")
+def search_papers_by_keywords_tool(keywords: str, limit: int = 10) -> str:
+    """
+    根据关键词查询论文列表。关键词可以匹配论文的标题、摘要或关键词字段。
+    
+    输入参数：
+    - keywords (字符串，必需): 关键词（支持多个关键词，用空格或逗号分隔）
+    - limit (整数，可选): 返回的最大结果数，默认10
+    """
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 分割关键词
+            keyword_list = [k.strip() for k in keywords.replace(',', ' ').split() if k.strip()]
+            if not keyword_list:
+                return "请输入有效的关键词。"
+            
+            # 构建查询条件（在标题、摘要、关键词字段中搜索）
+            conditions = []
+            params = []
+            
+            for keyword in keyword_list:
+                conditions.append("""
+                    (LOWER(title) LIKE LOWER(%s) 
+                     OR LOWER(abstract) LIKE LOWER(%s)
+                     OR EXISTS (
+                         SELECT 1 FROM unnest(keywords) AS kw 
+                         WHERE LOWER(kw) LIKE LOWER(%s)
+                     ))
+                """)
+                keyword_pattern = f'%{keyword}%'
+                params.extend([keyword_pattern, keyword_pattern, keyword_pattern])
+            
+            # 组合所有条件（AND关系）
+            where_clause = " AND ".join(conditions)
+            
+            query = f"""
+                SELECT paper_id, title, authors, abstract, year, journal, keywords, attachment_path
+                FROM papers
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            
+            cur.execute(query, params)
+            papers = cur.fetchall()
+            
+            if not papers:
+                return f"未找到包含关键词 '{keywords}' 的论文。"
+            
+            response_parts = [f"找到 {len(papers)} 篇包含关键词 '{keywords}' 的论文：\n"]
+            for i, paper in enumerate(papers, 1):
+                response_parts.append(f"\n[{i}] {paper['title'] or '未知标题'}")
+                response_parts.append(f"   ID: {paper['paper_id']}")
+                if paper['authors']:
+                    authors_str = ', '.join(paper['authors']) if isinstance(paper['authors'], list) else str(paper['authors'])
+                    response_parts.append(f"   作者: {authors_str}")
+                if paper['year']:
+                    response_parts.append(f"   年份: {paper['year']}")
+                if paper['abstract']:
+                    abstract_preview = paper['abstract'][:200] + "..." if len(paper['abstract']) > 200 else paper['abstract']
+                    response_parts.append(f"   摘要: {abstract_preview}")
+            
+            return "\n".join(response_parts)
+            
+        finally:
+            return_db_connection(conn)
+    except Exception as e:
+        logging.error(f"按关键词查询论文失败: {str(e)}")
+        return f"按关键词查询论文出错: {str(e)}"
+
+
+@tool("按条件查询论文工具")
+def search_papers_by_conditions_tool(year: Optional[int] = None, journal: Optional[str] = None, source: Optional[str] = None, limit: int = 10) -> str:
+    """
+    根据多个条件查询论文列表（年份、期刊、来源等）。
+    
+    输入参数：
+    - year (整数，可选): 论文发表年份
+    - journal (字符串，可选): 期刊名称（支持部分匹配）
+    - source (字符串，可选): 论文来源（'csv', 'email', 'pdf', 'zotero', 'obsidian'）
+    - limit (整数，可选): 返回的最大结果数，默认10
+    """
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 构建查询条件
+            conditions = []
+            params = []
+            
+            if year:
+                conditions.append("year = %s")
+                params.append(year)
+            
+            if journal:
+                conditions.append("LOWER(journal) LIKE LOWER(%s)")
+                params.append(f'%{journal}%')
+            
+            if source:
+                conditions.append("source = %s")
+                params.append(source)
+            
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            
+            query = f"""
+                SELECT paper_id, title, authors, abstract, year, journal, keywords, source, attachment_path
+                FROM papers
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            
+            cur.execute(query, params)
+            papers = cur.fetchall()
+            
+            if not papers:
+                conditions_str = []
+                if year:
+                    conditions_str.append(f"年份={year}")
+                if journal:
+                    conditions_str.append(f"期刊包含'{journal}'")
+                if source:
+                    conditions_str.append(f"来源={source}")
+                return f"未找到满足条件（{', '.join(conditions_str)}）的论文。"
+            
+            response_parts = [f"找到 {len(papers)} 篇满足条件的论文：\n"]
+            for i, paper in enumerate(papers, 1):
+                response_parts.append(f"\n[{i}] {paper['title'] or '未知标题'}")
+                response_parts.append(f"   ID: {paper['paper_id']}")
+                if paper['authors']:
+                    authors_str = ', '.join(paper['authors']) if isinstance(paper['authors'], list) else str(paper['authors'])
+                    response_parts.append(f"   作者: {authors_str}")
+                if paper['year']:
+                    response_parts.append(f"   年份: {paper['year']}")
+                if paper['journal']:
+                    response_parts.append(f"   期刊: {paper['journal']}")
+                if paper['source']:
+                    response_parts.append(f"   来源: {paper['source']}")
+            
+            return "\n".join(response_parts)
+            
+        finally:
+            return_db_connection(conn)
+    except Exception as e:
+        logging.error(f"按条件查询论文失败: {str(e)}")
+        return f"按条件查询论文出错: {str(e)}"
+
+
+@tool("获取论文全文工具")
+def get_paper_full_text_tool(paper_id: str) -> str:
+    """
+    获取指定论文的完整文本内容（优先从数据库块读取，如果不存在则从PDF文件读取）。
+    这个工具用于需要查看论文完整内容的情况。
+    
+    注意：优先从数据库块读取，因为这样更高效。只有在数据库块不存在时才会尝试读取PDF文件。
+    
+    输入参数：
+    - paper_id (字符串，必需): 论文ID
+    """
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查询论文信息和附件路径
+            cur.execute("""
+                SELECT title, attachment_path, abstract, authors, year, journal, keywords
+                FROM papers
+                WHERE paper_id = %s
+            """, (paper_id,))
+            paper_info = cur.fetchone()
+            
+            if not paper_info:
+                return f"未找到ID为 '{paper_id}' 的论文。"
+            
+            paper_title = paper_info['title'] or '未知标题'
+            attachment_path = paper_info['attachment_path']
+            
+            response_parts = [
+                f"论文信息：\n",
+                f"标题: {paper_title}\n",
+                f"ID: {paper_id}\n"
+            ]
+            
+            # 添加元数据
+            if paper_info['authors']:
+                authors_str = ', '.join(paper_info['authors']) if isinstance(paper_info['authors'], list) else str(paper_info['authors'])
+                response_parts.append(f"作者: {authors_str}\n")
+            if paper_info['year']:
+                response_parts.append(f"年份: {paper_info['year']}\n")
+            if paper_info['journal']:
+                response_parts.append(f"期刊: {paper_info['journal']}\n")
+            if paper_info['abstract']:
+                response_parts.append(f"\n摘要:\n{paper_info['abstract']}\n")
+            if paper_info['keywords']:
+                keywords_str = ', '.join(paper_info['keywords']) if isinstance(paper_info['keywords'], list) else str(paper_info['keywords'])
+                response_parts.append(f"\n关键词: {keywords_str}\n")
+            
+            # 优先从数据库块中获取（更高效）
+            cur.execute("""
+                SELECT chunk_text
+                FROM paper_chunks
+                WHERE paper_id = %s
+                ORDER BY chunk_index
+            """, (paper_id,))
+            chunks = cur.fetchall()
+            
+            if chunks and len(chunks) > 0:
+                # 从数据库块中获取全文（高效方式）
+                full_text = "\n\n".join([chunk['chunk_text'] for chunk in chunks])
+                # 限制长度
+                max_length = 15000
+                if len(full_text) > max_length:
+                    full_text = full_text[:max_length] + f"\n\n... (已截断，总长度: {len(full_text)} 字符，仅显示前 {max_length} 字符)"
+                response_parts.append(f"\n\n论文全文（从数据库块读取，共 {len(chunks)} 个块）：\n{full_text}")
+            elif attachment_path and os.path.exists(attachment_path):
+                # 如果数据库块不存在，尝试从PDF文件读取（备用方案）
+                try:
+                    logging.info(f"数据库块不存在，尝试从PDF读取: {attachment_path}")
+                    # 使用read_pdf_file_tool读取PDF
+                    full_text = read_pdf_file_tool(attachment_path, max_pages=0)  # 读取所有页面
+                    response_parts.append(f"\n\n论文全文（从PDF读取，数据库块不存在）：\n{full_text}")
+                except Exception as e:
+                    logging.warning(f"从PDF读取全文失败: {str(e)}")
+                    response_parts.append(f"\n\n未找到论文的文本内容（数据库块不存在，且PDF读取失败: {str(e)}）。")
+            else:
+                response_parts.append("\n\n未找到论文的文本内容（数据库块不存在，且PDF文件路径无效）。")
+            
+            return "".join(response_parts)
+            
+        finally:
+            return_db_connection(conn)
+    except Exception as e:
+        logging.error(f"获取论文全文失败: {str(e)}")
+        return f"获取论文全文出错: {str(e)}"
+
+
+@tool("总结论文内容工具")
+def summarize_paper_tool(paper_id: str, max_chunks: int = 10) -> str:
+    """
+    总结指定论文的主要内容，通过检索最相关的文本块并生成摘要。
+    这个工具用于快速了解论文的核心内容。
+    
+    输入参数：
+    - paper_id (字符串，必需): 论文ID
+    - max_chunks (整数，可选): 用于总结的最大文本块数量，默认10
+    """
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查询论文标题
+            cur.execute("SELECT title FROM papers WHERE paper_id = %s", (paper_id,))
+            paper_info = cur.fetchone()
+            
+            if not paper_info:
+                return f"未找到ID为 '{paper_id}' 的论文。"
+            
+            paper_title = paper_info['title'] or '未知标题'
+            
+            # 查询该论文的所有块（按索引排序，前面的块通常包含摘要、介绍等重要内容）
+            cur.execute("""
+                SELECT chunk_text
+                FROM paper_chunks
+                WHERE paper_id = %s
+                ORDER BY chunk_index
+                LIMIT %s
+            """, (paper_id, max_chunks))
+            selected_chunks = cur.fetchall()
+            
+            # 查询总块数
+            cur.execute("SELECT COUNT(*) as total FROM paper_chunks WHERE paper_id = %s", (paper_id,))
+            total_result = cur.fetchone()
+            total_chunks = total_result['total'] if total_result else 0
+            
+            # 合并文本
+            combined_text = "\n\n".join([chunk['chunk_text'] for chunk in selected_chunks])
+            
+            # 限制总长度，避免超出模型上下文
+            max_length = 8000
+            if len(combined_text) > max_length:
+                combined_text = combined_text[:max_length] + "..."
+            
+            return (
+                f"论文: {paper_title}\n"
+                f"论文ID: {paper_id}\n"
+                f"已检索 {len(selected_chunks)} 个文本块（共 {total_chunks} 个）\n\n"
+                f"内容摘要：\n{combined_text}"
+            )
+            
+        finally:
+            return_db_connection(conn)
+        
+    except Exception as e:
+        logging.error(f"总结论文内容失败: {str(e)}")
+        return f"总结论文内容出错: {str(e)}"
 

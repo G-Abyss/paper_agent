@@ -127,6 +127,15 @@ CSV_TITLE_COLUMN = int(os.getenv('CSV_TITLE_COLUMN', '0'))  # 论文标题列索
 CSV_ABSTRACT_COLUMN = int(os.getenv('CSV_ABSTRACT_COLUMN', '2'))  # 摘要列索引（从0开始，默认第3列）
 CSV_LINK_COLUMN = os.getenv('CSV_LINK_COLUMN', '')  # 论文链接列索引（可选，从0开始，如果为空则不读取链接）
 
+# PostgreSQL数据库配置
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = int(os.getenv('DB_PORT', '5432'))
+DB_NAME = os.getenv('DB_NAME', 'paper_agent')
+DB_USER = os.getenv('DB_USER', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+# 数据库连接字符串
+DB_URL = os.getenv('DATABASE_URL', f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
+
 # 设置环境变量（CrewAI 通过 LiteLLM 连接 Ollama 需要这些）
 os.environ['OLLAMA_API_BASE'] = OLLAMA_BASE_URL
 if not os.getenv('OPENAI_API_KEY'):

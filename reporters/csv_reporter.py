@@ -50,13 +50,13 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
             "摘要验证失败：关键词检测发现生成标志",
             "翻译失败:"
         ]:
-            abstract_to_save = translated_content
+            abstract_chinese = translated_content
         elif is_success == 1:
             # 如果翻译失败但摘要提取成功，使用原始摘要
-            abstract_to_save = full_abstract
+            abstract_chinese = full_abstract
         else:
             # 摘要提取失败
-            abstract_to_save = ''
+            abstract_chinese = ''
         
         # 获取英文原文摘要
         original_english_abstract = paper.get('original_english_abstract', '')
@@ -64,13 +64,24 @@ def export_all_papers_to_csv(relevant_papers, output_dir="reports"):
         if not original_english_abstract:
             original_english_abstract = full_abstract if is_success == 1 else ''
         
-        # 构建数据行
+        # 合并中文摘要和英文原文摘要
+        abstract_combined = ''
+        if abstract_chinese and original_english_abstract:
+            abstract_combined = f"{abstract_chinese}\n\n[English Original]\n{original_english_abstract}"
+        elif abstract_chinese:
+            abstract_combined = abstract_chinese
+        elif original_english_abstract:
+            abstract_combined = f"[English Original]\n{original_english_abstract}"
+        
+        # 获取评审结果
+        review = paper.get('review', '')
+        
+        # 构建数据行（使用新的表头格式：title, link, abstract, 评审结果）
         row = {
-            '论文标题': paper.get('title', ''),
-            '论文链接': paper.get('link', ''),
-            '摘要（中文）': abstract_to_save,  # 保存翻译后的摘要（如果翻译成功），否则保存原始摘要
-            '摘要（英文原文）': original_english_abstract,  # 保存英文原文
-            '处理结果': is_success,
+            'title': paper.get('title', ''),
+            'link': paper.get('link', ''),
+            'abstract': abstract_combined,  # 中文摘要和英文原文的合集
+            '评审结果': review,
         }
         
         csv_data.append(row)

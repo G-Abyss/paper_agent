@@ -118,6 +118,13 @@
             background: var(--panel-center-bg);
         }
 
+        .center-panel .panel-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
         /* 右侧面板 - 生成 */
         .right-panel {
             width: 350px;
@@ -150,6 +157,11 @@
             margin: 0;
             text-transform: uppercase;
             text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 8px;
         }
 
         .settings-btn {
@@ -216,6 +228,71 @@
             border-bottom: 2px solid var(--dark-border);
             border-radius: 0 0 8px 8px;
             margin-bottom: 0;
+            transition: all 0.3s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .run-options.collapsed {
+            max-height: 0;
+            padding: 0;
+            border-bottom: none;
+            opacity: 0;
+            margin: 0;
+        }
+
+        .collapse-arrow-btn {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%) translateY(50%);
+            width: 40px;
+            height: 20px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid var(--neon-cyan);
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            color: var(--neon-cyan);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 5;
+            padding: 0;
+        }
+
+        .collapse-arrow-btn:hover {
+            background: rgba(0, 217, 255, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 217, 255, 0.4);
+        }
+
+        .expand-arrow-btn {
+            width: 100%;
+            height: 24px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-top: none;
+            border-bottom: 1px solid var(--dark-border);
+            border-radius: 0 0 8px 8px;
+            color: var(--neon-cyan);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            padding: 0;
+        }
+
+        .expand-arrow-btn:hover {
+            background: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 217, 255, 0.3);
+        }
+
+        .expand-arrow-btn.hidden {
+            display: none;
         }
 
         .option-group {
@@ -333,6 +410,57 @@
             pointer-events: none;
         }
 
+        .pdf-drop-zone {
+            width: 100%;
+            min-height: 120px;
+            border: 2px dashed var(--neon-cyan);
+            border-radius: 8px;
+            background: rgba(0, 217, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pdf-drop-zone:hover {
+            background: rgba(0, 217, 255, 0.1);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .pdf-drop-zone.drag-over {
+            background: rgba(0, 217, 255, 0.15);
+            border-color: var(--neon-green);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        }
+
+        .pdf-drop-content {
+            text-align: center;
+            padding: 20px;
+            pointer-events: none;
+        }
+
+        .pdf-drop-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .pdf-drop-text {
+            font-size: 16px;
+            color: var(--neon-cyan);
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .pdf-drop-hint {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
         .date-inputs {
             display: flex;
             gap: 10px;
@@ -374,6 +502,7 @@
         .run-button:active {
             transform: translateY(0);
         }
+
 
         .run-button.running {
             background: linear-gradient(135deg, var(--neon-purple), var(--neon-red));
@@ -593,11 +722,12 @@
 
         /* 日志区域 */
         .log-container {
-            height: 100%;
+            flex: 1;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 12px;
             line-height: 1.6;
+            padding-bottom: 10px;
         }
 
         .log-entry {
@@ -688,6 +818,137 @@
         .log-entry.agent_started p,
         .log-entry.agent_final_answer p {
             margin: 0.5em 0;
+        }
+
+        /* 对话输入区域 */
+        .chat-input-container {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(0, 217, 255, 0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: rgba(0, 20, 40, 0.8);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            padding: 12px 15px;
+            color: var(--neon-cyan);
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+            transition: all 0.3s;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.1);
+        }
+
+        .chat-input:focus {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+            background: rgba(0, 30, 50, 0.9);
+        }
+
+        .chat-input::placeholder {
+            color: rgba(0, 217, 255, 0.5);
+        }
+
+        .chat-send-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 8px;
+            color: var(--neon-cyan);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+            flex-shrink: 0;
+        }
+
+        .chat-send-btn:hover {
+            background: rgba(0, 217, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .chat-send-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .chat-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .send-icon {
+            font-weight: bold;
+            text-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        /* 对话消息样式 */
+        .chat-message {
+            background: rgba(0, 20, 40, 0.6);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.1);
+            animation: fadeIn 0.3s;
+        }
+
+        .chat-message.user {
+            background: rgba(0, 50, 100, 0.6);
+            border-color: rgba(0, 217, 255, 0.5);
+        }
+
+        .chat-message.assistant {
+            background: rgba(0, 30, 60, 0.6);
+            border-color: rgba(0, 255, 200, 0.3);
+        }
+
+        .chat-message-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .chat-message.user .chat-message-header {
+            color: var(--neon-cyan);
+        }
+
+        .chat-message.assistant .chat-message-header {
+            color: var(--neon-green);
+        }
+
+        .chat-message-content {
+            color: rgba(255, 255, 255, 0.9);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-message.thinking {
+            opacity: 0.7;
+            font-style: italic;
+            color: rgba(0, 217, 255, 0.7);
         }
 
         .log-entry.agent_started strong,
@@ -1785,10 +2046,11 @@
         <div class="left-panel panel">
             <div class="panel-header">
                 <h2>来源</h2>
-                <div class="paper-stats" id="paper-stats" style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 5px;">
-                    总计: 0 | 成功: 0 | 失败: 0 | 等待: 0
-                </div>
+                <button class="settings-btn" id="tag-settings-btn" onclick="openTagSettingsModal()" title="导入设置">⚙️</button>
             </div>
+            <button class="expand-arrow-btn hidden" id="expand-arrow-btn" title="展开选项">
+                <span>▼</span>
+            </button>
             <div class="run-options">
                 <div class="option-group">
                     <label>研究方向关键词</label>
@@ -1801,11 +2063,15 @@
                     <div class="radio-group">
                         <label class="radio-option">
                             <input type="radio" name="mode" value="local" checked>
-                            <span>本地模式</span>
+                            <span>本地CSV</span>
                         </label>
                         <label class="radio-option">
                             <input type="radio" name="mode" value="remote">
-                            <span>远程模式</span>
+                            <span>邮箱</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="mode" value="pdf">
+                            <span>论文PDF</span>
                         </label>
                     </div>
                 </div>
@@ -1847,7 +2113,24 @@
                         </div>
                     </div>
                 </div>
+                <div class="option-group hidden" id="pdf-options">
+                    <label>选择PDF文件（支持多选）</label>
+                    <div class="pdf-drop-zone" id="pdf-drop-zone">
+                        <input type="file" id="pdf-file" accept=".pdf" multiple style="display: none;">
+                        <div class="pdf-drop-content">
+                            <div class="pdf-drop-icon">📄</div>
+                            <div class="pdf-drop-text">请选择PDF文件</div>
+                            <div class="pdf-drop-hint">点击选择文件或拖拽文件到此处（支持多选）</div>
+                        </div>
+                    </div>
+                    <div id="pdf-file-name" style="margin-top: 8px; color: rgba(255, 255, 255, 0.7); font-size: 12px;">
+                        未选择文件
+                    </div>
+                </div>
                 <button class="run-button" id="run-btn">▶ 开始运行</button>
+                <button class="collapse-arrow-btn" id="collapse-arrow-btn" title="折叠选项">
+                    <span>▲</span>
+                </button>
             </div>
             <div class="panel-content">
                 <div class="paper-list" id="paper-list">
@@ -1859,13 +2142,30 @@
         <div class="center-panel panel">
             <div class="panel-header">
                 <h2>对话</h2>
-                <button class="settings-btn" id="settings-btn" title="模型设置" onclick="openSettingsModal()">⚙️</button>
+                <div class="header-buttons">
+                    <button class="settings-btn" id="database-btn" title="数据库管理" onclick="openDatabasePage()">📊</button>
+                    <button class="settings-btn" id="settings-btn" title="模型设置" onclick="openSettingsModal()">⚙️</button>
+                </div>
             </div>
             <div class="panel-content">
                 <div class="log-container" id="log-container">
                     <div class="log-entry info">
                         <span class="log-timestamp">[系统]</span>
                         系统就绪，等待开始处理...
+                    </div>
+                </div>
+                <!-- 对话输入区域 -->
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <textarea 
+                            id="chat-input" 
+                            class="chat-input" 
+                            placeholder="输入您的问题，按回车或点击按钮发送..."
+                            rows="3"
+                        ></textarea>
+                        <button id="chat-send-btn" class="chat-send-btn" title="发送 (Enter)">
+                            <span class="send-icon">↵</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1907,7 +2207,11 @@
         const modeRadios = document.querySelectorAll('input[name="mode"]');
         const localOptions = document.getElementById('local-options');
         const remoteOptions = document.getElementById('remote-options');
+        const pdfOptions = document.getElementById('pdf-options');
         const runBtn = document.getElementById('run-btn');
+        const collapseArrowBtn = document.getElementById('collapse-arrow-btn');
+        const expandArrowBtn = document.getElementById('expand-arrow-btn');
+        const runOptions = document.querySelector('.run-options');
         const paperList = document.getElementById('paper-list');
         const logContainer = document.getElementById('log-container');
 
@@ -1943,12 +2247,18 @@
         function updateModeDisplay() {
             const checkedMode = document.querySelector('input[name="mode"]:checked');
             if (checkedMode) {
+                // 先隐藏所有选项
+                localOptions.classList.add('hidden');
+                remoteOptions.classList.add('hidden');
+                pdfOptions.classList.add('hidden');
+                
+                // 根据选中的模式显示对应选项
                 if (checkedMode.value === 'local') {
                     localOptions.classList.remove('hidden');
-                    remoteOptions.classList.add('hidden');
-                } else {
-                    localOptions.classList.add('hidden');
+                } else if (checkedMode.value === 'remote') {
                     remoteOptions.classList.remove('hidden');
+                } else if (checkedMode.value === 'pdf') {
+                    pdfOptions.classList.remove('hidden');
                 }
             }
         }
@@ -1962,6 +2272,149 @@
         
         // 初始化时根据默认选中的模式设置显示状态
         updateModeDisplay();
+
+        // 折叠按钮功能
+        function initCollapseButton() {
+            if (!collapseArrowBtn || !expandArrowBtn || !runOptions) {
+                return;
+            }
+            
+            // 向上箭头：折叠选项区域
+            collapseArrowBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                runOptions.classList.add('collapsed');
+                expandArrowBtn.classList.remove('hidden');
+            });
+            
+            // 向下箭头：展开选项区域
+            expandArrowBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                runOptions.classList.remove('collapsed');
+                expandArrowBtn.classList.add('hidden');
+            });
+        }
+
+        // 对话功能
+        function initChatInput() {
+            const chatInput = document.getElementById('chat-input');
+            const chatSendBtn = document.getElementById('chat-send-btn');
+            
+            if (!chatInput || !chatSendBtn) {
+                return;
+            }
+
+            // 发送消息函数
+            function sendMessage() {
+                const message = chatInput.value.trim();
+                if (!message) {
+                    return;
+                }
+
+                // 禁用输入框和按钮
+                chatInput.disabled = true;
+                chatSendBtn.disabled = true;
+
+                // 显示用户消息
+                addChatMessage('user', message);
+                
+                // 显示思考中消息
+                const thinkingId = addChatMessage('assistant', '正在思考...', true);
+
+                // 清空输入框
+                chatInput.value = '';
+
+                // 发送请求到后端
+                fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // 移除思考中消息
+                    removeChatMessage(thinkingId);
+
+                    if (data.success) {
+                        // 显示助手回复
+                        addChatMessage('assistant', data.response);
+                    } else {
+                        // 显示错误消息
+                        addChatMessage('assistant', `错误: ${data.error || '未知错误'}`);
+                    }
+                })
+                .catch(error => {
+                    // 移除思考中消息
+                    removeChatMessage(thinkingId);
+                    // 显示错误消息
+                    addChatMessage('assistant', `网络错误: ${error.message}`);
+                })
+                .finally(() => {
+                    // 重新启用输入框和按钮
+                    chatInput.disabled = false;
+                    chatSendBtn.disabled = false;
+                    chatInput.focus();
+                });
+            }
+
+            // 按钮点击事件
+            chatSendBtn.addEventListener('click', sendMessage);
+
+            // 回车键发送（Shift+Enter换行）
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        }
+
+        // 添加对话消息到日志容器
+        function addChatMessage(role, content, isThinking = false) {
+            const logContainer = document.getElementById('log-container');
+            if (!logContainer) {
+                return null;
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role}${isThinking ? ' thinking' : ''}`;
+            
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'chat-message-header';
+            headerDiv.textContent = role === 'user' ? '👤 您' : '🤖 助手';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'chat-message-content';
+            contentDiv.textContent = content;
+            
+            messageDiv.appendChild(headerDiv);
+            messageDiv.appendChild(contentDiv);
+            
+            // 生成唯一ID用于删除
+            const messageId = 'chat-msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            messageDiv.id = messageId;
+            
+            logContainer.appendChild(messageDiv);
+            
+            // 滚动到底部
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            return messageId;
+        }
+
+        // 移除对话消息
+        function removeChatMessage(messageId) {
+            if (!messageId) {
+                return;
+            }
+            const messageDiv = document.getElementById(messageId);
+            if (messageDiv) {
+                messageDiv.remove();
+            }
+        }
 
         // 连接Socket.IO
         function connectWebSocket() {
@@ -2033,7 +2486,7 @@
                         runBtn.classList.add('waiting');
                         runBtn.textContent = '⏸ 等待人工确认';
                         runBtn.disabled = false;
-                    } else if (data.status === 'completed') {
+                    } else if (data.status === 'completed' || data.status === 'idle') {
                         isRunning = false;
                         isWaitingConfirmation = false;
                         runBtn.classList.remove('running', 'waiting');
@@ -2224,31 +2677,7 @@
 
         // 添加论文
         // 更新统计信息
-        function updatePaperStats() {
-            const statsEl = document.getElementById('paper-stats');
-            if (!statsEl) return;
-            
-            const papers = paperList.querySelectorAll('.paper-item');
-            let total = papers.length;
-            let success = 0;
-            let error = 0;
-            let pending = 0;
-            
-            papers.forEach(paper => {
-                const statusEl = paper.querySelector('.paper-status');
-                if (statusEl) {
-                    if (statusEl.classList.contains('success')) {
-                        success++;
-                    } else if (statusEl.classList.contains('error')) {
-                        error++;
-                    } else if (statusEl.classList.contains('pending')) {
-                        pending++;
-                    }
-                }
-            });
-            
-            statsEl.textContent = `总计: ${total} | 成功: ${success} | 失败: ${error} | 等待: ${pending}`;
-        }
+        // 统计功能已移除
 
         function addPaper(paper) {
             // 移除"处理中..."提示
@@ -2306,7 +2735,6 @@
             }
             
             paperList.appendChild(paperItem);
-            updatePaperStats();
         }
 
         // 处理等待确认消息（批量模式，已弃用）
@@ -2489,7 +2917,6 @@
                 paperItem.setAttribute('data-link', paper.link);
             }
             
-            updatePaperStats();
         }
         
         // 删除论文
@@ -2497,7 +2924,6 @@
             const paperItem = document.getElementById(`paper-${paperId}`);
             if (paperItem) {
                 paperItem.remove();
-                updatePaperStats();
             }
         }
 
@@ -3102,7 +3528,7 @@ contentHtml + '\n' +
             // 发送启动请求
             let requestPromise;
             if (mode === 'local') {
-                // 本地模式：使用FormData上传文件
+                // 本地CSV模式：使用FormData上传文件
                 const csvFileInput = document.getElementById('csv-file');
                 const formData = new FormData();
                 formData.append('csv_file', csvFileInput.files[0]);
@@ -3112,8 +3538,28 @@ contentHtml + '\n' +
                     method: 'POST',
                     body: formData
                 });
+            } else if (mode === 'pdf') {
+                // 论文PDF模式：使用FormData上传PDF文件（支持多文件）
+                const pdfFileInput = document.getElementById('pdf-file');
+                if (!pdfFileInput.files || pdfFileInput.files.length === 0) {
+                    alert('请先选择PDF文件');
+                    isRunning = false;
+                    runBtn.disabled = false;
+                    return;
+                }
+                const formData = new FormData();
+                // 添加所有PDF文件
+                for (let i = 0; i < pdfFileInput.files.length; i++) {
+                    formData.append('pdf_files', pdfFileInput.files[i]);
+                }
+                formData.append('config', JSON.stringify(config));
+                
+                requestPromise = fetch('/api/start', {
+                    method: 'POST',
+                    body: formData
+                });
             } else {
-                // 远程模式：发送JSON配置
+                // 邮箱模式：发送JSON配置
                 requestPromise = fetch('/api/start', {
                     method: 'POST',
                     headers: {
@@ -3191,16 +3637,124 @@ contentHtml + '\n' +
             }
         }
 
+        // 初始化PDF文件选择和拖拽
+        function initPdfFileHandler() {
+            const pdfFileInput = document.getElementById('pdf-file');
+            const pdfDropZone = document.getElementById('pdf-drop-zone');
+            const pdfFileName = document.getElementById('pdf-file-name');
+            
+            if (!pdfFileInput || !pdfDropZone || !pdfFileName) {
+                setTimeout(initPdfFileHandler, 100);
+                return;
+            }
+            
+            const pdfDropContent = pdfDropZone.querySelector('.pdf-drop-content');
+            
+            // 点击选择文件
+            pdfDropZone.addEventListener('click', function(e) {
+                if (e.target !== pdfFileInput) {
+                    pdfFileInput.click();
+                }
+            });
+            
+            // 文件选择变化事件（支持多文件）
+            pdfFileInput.addEventListener('change', function(e) {
+                const files = e.target.files;
+                handlePdfFileSelect(files, pdfFileName, pdfDropContent);
+            });
+            
+            // 拖拽事件
+            pdfDropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pdfDropZone.classList.add('drag-over');
+            });
+            
+            pdfDropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pdfDropZone.classList.remove('drag-over');
+            });
+            
+            pdfDropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pdfDropZone.classList.remove('drag-over');
+                
+                const files = e.dataTransfer.files;
+                if (files && files.length > 0) {
+                    // 过滤出PDF文件
+                    const pdfFiles = Array.from(files).filter(file => 
+                        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+                    );
+                    
+                    if (pdfFiles.length > 0) {
+                        // 创建新的FileList对象并设置到input
+                        const dataTransfer = new DataTransfer();
+                        pdfFiles.forEach(file => dataTransfer.items.add(file));
+                        pdfFileInput.files = dataTransfer.files;
+                        handlePdfFileSelect(pdfFileInput.files, pdfFileName, pdfDropContent);
+                    } else {
+                        alert('请选择PDF文件');
+                    }
+                }
+            });
+        }
+        
+        // 处理PDF文件选择（支持多文件）
+        function handlePdfFileSelect(files, pdfFileName, pdfDropContent) {
+            if (files && files.length > 0) {
+                const fileCount = files.length;
+                if (fileCount === 1) {
+                    pdfFileName.textContent = files[0].name;
+                } else {
+                    pdfFileName.textContent = `已选择 ${fileCount} 个文件: ${Array.from(files).map(f => f.name).join(', ')}`;
+                }
+                pdfFileName.style.color = '#00ff88';
+                
+                // 更新拖拽区域显示
+                const icon = pdfDropContent.querySelector('.pdf-drop-icon');
+                const text = pdfDropContent.querySelector('.pdf-drop-text');
+                if (icon) icon.textContent = '✓';
+                if (text) {
+                    if (fileCount === 1) {
+                        text.textContent = files[0].name;
+                    } else {
+                        text.textContent = `已选择 ${fileCount} 个PDF文件`;
+                    }
+                    text.style.color = '#00ff88';
+                }
+            } else {
+                pdfFileName.textContent = '未选择文件';
+                pdfFileName.style.color = 'rgba(255, 255, 255, 0.7)';
+                
+                // 恢复拖拽区域显示
+                const icon = pdfDropContent.querySelector('.pdf-drop-icon');
+                const text = pdfDropContent.querySelector('.pdf-drop-text');
+                if (icon) icon.textContent = '📄';
+                if (text) {
+                    text.textContent = '请选择PDF文件';
+                    text.style.color = 'var(--neon-cyan)';
+                }
+            }
+        }
+
         // 初始化
         // 确保DOM加载完成后再初始化
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
                 initFileSelectHandler();
+                initPdfFileHandler();
+                initCollapseButton();
+                initChatInput();
                 connectWebSocket();
             });
         } else {
             // DOM已经加载完成
             initFileSelectHandler();
+            initPdfFileHandler();
+            initCollapseButton();
+            initChatInput();
             connectWebSocket();
         }
     </script>
@@ -3637,6 +4191,40 @@ contentHtml + '\n' +
             tryInitSettings();
         }
     </script>
+
+    <!-- Tag设置模态框 -->
+    <div class="settings-modal" id="tag-settings-modal">
+        <div class="settings-content">
+            <div class="settings-header">
+                <h3>导入设置</h3>
+                <button class="settings-close" id="tag-settings-close">✕</button>
+            </div>
+            <div class="settings-body">
+                <div class="option-group">
+                    <label>Tag标签</label>
+                    <div style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <input type="radio" name="tag-mode" value="default" id="tag-mode-default" checked>
+                            <span style="margin-left: 8px;">Default（默认）</span>
+                        </label>
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="tag-mode" value="custom" id="tag-mode-custom">
+                            <span style="margin-left: 8px;">Custom（自定义）</span>
+                        </label>
+                    </div>
+                    <div id="custom-tag-container" style="margin-top: 15px; display: none;">
+                        <input type="text" class="input-field" id="custom-tag-input" placeholder="输入自定义tag标签...">
+                        <p style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 5px;">
+                            选择Custom后，所有导入方式（CSV、邮箱、PDF）都将使用此tag
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button class="btn-save" onclick="saveTagSettings()">保存</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 邮箱设置模态框 -->
     <div class="email-settings-modal" id="email-settings-modal">
@@ -4108,6 +4696,156 @@ contentHtml + '\n' +
             document.addEventListener('DOMContentLoaded', initEmailModal);
         } else {
             initEmailModal();
+        }
+
+        // 打开数据库管理页面（新窗口）
+        window.openDatabasePage = function() {
+            const windowWidth = 1400;
+            const windowHeight = 900;
+            const left = (screen.width - windowWidth) / 2;
+            const top = (screen.height - windowHeight) / 2;
+            
+            const dbWindow = window.open(
+                '/database',
+                '_blank',
+                `width=${windowWidth},height=${windowHeight},` +
+                `left=${left},top=${top},` +
+                `scrollbars=yes,resizable=yes`
+            );
+            
+            if (!dbWindow) {
+                addLog('error', '无法打开新窗口，请检查浏览器弹窗设置');
+            }
+        };
+        
+        // Tag设置模态框
+        let tagSettingsModal, tagSettingsClose;
+        
+        window.openTagSettingsModal = function() {
+            if (!tagSettingsModal) {
+                initTagSettingsModal();
+            }
+            if (tagSettingsModal) {
+                loadTagSettings();
+                tagSettingsModal.classList.add('active');
+            }
+        };
+        
+        function initTagSettingsModal() {
+            tagSettingsModal = document.getElementById('tag-settings-modal');
+            tagSettingsClose = document.getElementById('tag-settings-close');
+            
+            if (tagSettingsClose) {
+                tagSettingsClose.addEventListener('click', closeTagSettingsModal);
+            }
+            
+            if (tagSettingsModal) {
+                tagSettingsModal.addEventListener('click', (e) => {
+                    if (e.target === tagSettingsModal) {
+                        closeTagSettingsModal();
+                    }
+                });
+            }
+            
+            // 监听tag模式切换
+            const tagModeDefault = document.getElementById('tag-mode-default');
+            const tagModeCustom = document.getElementById('tag-mode-custom');
+            const customTagContainer = document.getElementById('custom-tag-container');
+            
+            if (tagModeDefault) {
+                tagModeDefault.addEventListener('change', function() {
+                    if (this.checked && customTagContainer) {
+                        customTagContainer.style.display = 'none';
+                    }
+                });
+            }
+            
+            if (tagModeCustom) {
+                tagModeCustom.addEventListener('change', function() {
+                    if (this.checked && customTagContainer) {
+                        customTagContainer.style.display = 'block';
+                    }
+                });
+            }
+        }
+        
+        function closeTagSettingsModal() {
+            if (tagSettingsModal) {
+                tagSettingsModal.classList.remove('active');
+            }
+        }
+        
+        function loadTagSettings() {
+            fetch('/api/settings/tag')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const tagMode = data.tag_mode || 'default';
+                        const customTag = data.custom_tag || '';
+                        
+                        const tagModeDefault = document.getElementById('tag-mode-default');
+                        const tagModeCustom = document.getElementById('tag-mode-custom');
+                        const customTagInput = document.getElementById('custom-tag-input');
+                        const customTagContainer = document.getElementById('custom-tag-container');
+                        
+                        if (tagMode === 'custom') {
+                            if (tagModeCustom) tagModeCustom.checked = true;
+                            if (customTagContainer) customTagContainer.style.display = 'block';
+                            if (customTagInput) customTagInput.value = customTag;
+                        } else {
+                            if (tagModeDefault) tagModeDefault.checked = true;
+                            if (customTagContainer) customTagContainer.style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('加载tag设置失败:', error);
+                });
+        }
+        
+        function saveTagSettings() {
+            const tagModeDefault = document.getElementById('tag-mode-default');
+            const tagModeCustom = document.getElementById('tag-mode-custom');
+            const customTagInput = document.getElementById('custom-tag-input');
+            
+            const tagMode = tagModeCustom && tagModeCustom.checked ? 'custom' : 'default';
+            const customTag = tagMode === 'custom' && customTagInput ? customTagInput.value.trim() : '';
+            
+            if (tagMode === 'custom' && !customTag) {
+                alert('请输入自定义tag标签');
+                return;
+            }
+            
+            fetch('/api/settings/tag', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    tag_mode: tagMode,
+                    custom_tag: customTag
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('设置已保存');
+                    closeTagSettingsModal();
+                } else {
+                    alert('保存失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('保存tag设置失败:', error);
+                alert('保存失败: ' + error.message);
+            });
+        }
+        
+        // 初始化tag设置模态框
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTagSettingsModal);
+        } else {
+            initTagSettingsModal();
         }
     </script>
 </body>
