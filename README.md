@@ -26,6 +26,11 @@
 - 🎨 **可视化展示**：三面板布局（来源、对话、生成），直观展示论文处理流程和结果
 - ✏️ **摘要确认编辑**：支持在 Web 界面中手动确认和编辑提取的摘要，确保摘要质量
 - 🔗 **快速访问**：点击论文框即可在新窗口打开论文原网址，方便快速查看论文详情
+- 📚 **个人知识库助手**（v0.8 新增）：基于 RAG 技术的智能问答系统，可以查询已上传的 PDF 论文内容
+- 💬 **对话历史记忆**（v0.8 新增）：助手可以记住历史对话，更好地理解用户意图
+- 🔍 **多维度论文查询**（v0.8 新增）：支持按作者、关键词、年份、期刊等条件查询论文
+- 📄 **PDF 向量化存储**（v0.8 新增）：PDF 论文自动处理并存储到向量数据库，支持语义搜索
+- 🗑️ **智能清理功能**（v0.8 新增）：自动清理无用的 PDF 文件，节省存储空间
 
 ## 🛠️ 技术栈
 
@@ -40,13 +45,19 @@
 - **Pandas** - 数据处理
 - **Flask** - Web 服务器框架
 - **Socket.IO** - WebSocket 实时通信库
+- **PostgreSQL + pgvector** - 向量数据库，用于存储论文内容和向量嵌入
+- **SentenceTransformer** - 文本向量化模型，用于生成论文内容的向量表示
 
 ## 📋 前置要求
 
 1. **Python 3.8+**
 2. **Ollama** 已安装并运行（默认地址：`http://localhost:11434`）
 3. **已下载所需模型**（如 `qwen2.5:32b`）
-4. **QQ 邮箱账号**（需要开启 IMAP 服务）
+4. **QQ 邮箱账号**（需要开启 IMAP 服务，仅邮件模式需要）
+5. **PostgreSQL 数据库**（v0.8 新增，用于向量数据库功能）
+   - PostgreSQL 12+ 版本
+   - 安装 pgvector 扩展：`CREATE EXTENSION vector;`
+   - 配置数据库连接信息（在 `.env` 文件中）
 
 ## 🚀 安装步骤
 
@@ -66,8 +77,12 @@ pip install -r requirements.txt
 如果没有 `requirements.txt`，请安装以下依赖：
 
 ```bash
-pip install crewai python-dotenv pyyaml beautifulsoup4 ollama pandas requests PyMuPDF crawl4ai flask flask-socketio
+pip install crewai python-dotenv pyyaml beautifulsoup4 ollama pandas requests PyMuPDF crawl4ai flask flask-socketio psycopg2-binary sentence-transformers
 ```
+
+**注意**：v0.8 版本新增了向量数据库功能，需要额外安装：
+- `psycopg2-binary` - PostgreSQL 数据库驱动
+- `sentence-transformers` - 文本向量化模型库
 
 ### 3. 配置环境变量
 
@@ -98,6 +113,13 @@ DEBUG_MODE=0
 CSV_TITLE_COLUMN=0                # 论文标题列索引（从0开始，默认第1列）
 CSV_ABSTRACT_COLUMN=2             # 摘要列索引（从0开始，默认第3列）
 CSV_LINK_COLUMN=                  # 论文链接列索引（可选，从0开始，如果为空则不读取链接）
+
+# PostgreSQL 数据库配置（v0.8 新增，用于向量数据库功能）
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=paper_agent
+DB_USER=postgres
+DB_PASSWORD=your_password
 
 # 注意：
 # - LOCAL、CSV_FILE_PATH、START_DAYS、END_DAYS 等变量由前端界面动态设置，无需在此配置
@@ -147,6 +169,10 @@ Web 界面支持：
 - 多模型评审结果查看（v0.7 新增）：点击处理完成的论文可以查看每个模型的评审结果和汇总结果，包含共识要点、分歧分析等
 - 论文统计信息：实时显示论文总数、成功数、失败数、等待数
 - 日期选择器：直观的日期选择，支持直接选择开始和结束日期
+- 个人知识库助手（v0.8 新增）：在对话面板中可以直接与知识库助手对话，查询已上传的 PDF 论文内容
+- PDF 上传和管理（v0.8 新增）：支持上传多个 PDF 文件，自动处理并存储到向量数据库，支持清理无用 PDF
+- 个人知识库助手（v0.8 新增）：在对话面板中可以直接与知识库助手对话，查询已上传的 PDF 论文内容
+- PDF 上传和管理（v0.8 新增）：支持上传多个 PDF 文件，自动处理并存储到向量数据库，支持清理无用 PDF
 
 ### 方式二：命令行模式
 
@@ -211,7 +237,9 @@ CSV 文件说明：
 │   ├── review_agent.py         # 评审专家
 │   ├── summary_agent.py        # 汇总专家（多模型评审结果汇总）
 │   ├── relevance_agent.py       # 相关性分析专家
-│   └── keyword_expansion_agent.py  # 关键词扩写专家
+│   ├── keyword_expansion_agent.py  # 关键词扩写专家
+│   ├── knowledge_base_agent.py  # 个人知识库助手（v0.8新增）
+│   └── base.py                 # 基础工具集（v0.8新增，包含RAG查询等工具）
 ├── processors/                  # 处理流程模块（v0.7新增）
 │   ├── relevance_processor.py  # 相关性处理流程
 │   └── paper_processor.py      # 论文处理流程（验证+翻译+评审）
@@ -231,6 +259,8 @@ CSV 文件说明：
 │   └── debug_utils.py          # 调试工具
 ├── data/                        # 数据存储目录（v0.7新增）
 │   └── emails.json             # 邮件本地存储文件
+├── database/                    # 向量数据库存储目录（v0.8新增）
+│   └── *.pdf                   # 存储的PDF论文文件
 ├── reports/                     # 生成的报告目录
 │   ├── Robotics_Academic_Daily_*.md  # 日报文件（Markdown 格式）
 │   └── 相关论文_*.csv          # 相关论文 CSV 文件
@@ -263,6 +293,8 @@ CSV 文件说明：
 - **多模型并行评审**（v0.7 新增）：使用多个配置的 AI 模型并行评审同一篇论文，每个模型独立给出评审结果和评分
 - **结果汇总**（v0.7 新增）：汇总专家综合分析多个模型的评审结果，识别共识和分歧，生成综合评审报告和最终评分
 - **报告生成**：生成 Markdown 格式的日报和 CSV 文件
+- **PDF 向量化存储**（v0.8 新增）：上传的 PDF 论文自动处理并存储到向量数据库，支持语义搜索
+- **个人知识库问答**（v0.8 新增）：基于 RAG 技术的智能问答系统，可以查询已上传的 PDF 论文内容，支持对话历史记忆
 
 ## ⚙️ 配置说明
 
@@ -456,6 +488,21 @@ BACKUP_DIR=/path/to/backup/directory
     - 扩写后的描述会传递给所有AI专家，提高判断准确性
     - 如果扩写失败，系统会使用原始关键词继续处理
 
+15. **个人知识库助手**（v0.8 新增）：
+    - 可以上传 PDF 论文到向量数据库，自动提取文本并生成向量嵌入
+    - 支持语义搜索（RAG），根据问题智能检索相关论文内容
+    - 支持对话历史记忆，助手可以记住之前的对话，更好地理解用户意图
+    - 支持多种查询方式：按作者、关键词、年份、期刊等条件查询论文
+    - 需要 PostgreSQL 数据库和 pgvector 扩展支持
+    - 首次使用需要下载向量化模型（paraphrase-multilingual-MiniLM-L12-v2），后续使用无需网络连接
+
+16. **向量数据库**（v0.8 新增）：
+    - 使用 PostgreSQL + pgvector 存储论文元数据和向量嵌入
+    - 支持高效的语义相似度搜索
+    - 论文内容自动分块存储，支持大文档处理
+    - 支持离线模式，模型从本地缓存加载，无需网络连接
+    - 需要配置数据库连接信息（在 `.env` 文件中）
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
@@ -482,6 +529,16 @@ BACKUP_DIR=/path/to/backup/directory
 7. 模型配置是否正确（可以在Web界面测试模型连接）
 8. 如果开启调试模式，检查日志文件以获取详细错误信息
 9. 如果使用多模型评审，确保至少有一个模型配置正确且已启用
+10. **PostgreSQL 数据库**（v0.8 新增）：
+    - 确保 PostgreSQL 已安装并运行
+    - 确保已安装 pgvector 扩展：`CREATE EXTENSION vector;`
+    - 检查数据库连接配置是否正确（`.env` 文件中的 `DB_*` 变量）
+    - 首次使用前运行 `python utils/init_db.py` 初始化数据库
+    - 如果遇到 "关系不存在" 错误，检查数据库是否已正确初始化
+11. **向量模型**（v0.8 新增）：
+    - 首次使用需要下载 `paraphrase-multilingual-MiniLM-L12-v2` 模型
+    - 模型会自动下载到本地缓存，后续使用无需网络连接
+    - 如果下载失败，检查网络连接或使用代理
 
 ---
 
