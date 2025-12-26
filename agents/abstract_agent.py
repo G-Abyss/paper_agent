@@ -6,95 +6,68 @@
 
 from crewai import Agent, Task
 from bs4 import BeautifulSoup
-from config import llm
-from agents.base import fetch_webpage_tool, arxiv_download_tool
+from agents.base import get_llm
+from agents.base import fetch_webpage_tool
 
+
+def extract_abstract_task_logic(paper_title, paper_link):
+    """直接执行摘要提取逻辑（包装函数），跳过 Agent 的工具决策环"""
+    from agents.base import fetch_webpage_content
+    import logging
+    import re
+
+    logging.info(f"--- [直接执行爬取] 尝试获取: {paper_link} ---")
+    # 直接调用工具函数，获取原始网页文本
+    web_content = fetch_webpage_content.run(paper_link)
+    
+    if "获取失败" in web_content or "Timeout" in web_content:
+        logging.warning(f"--- [爬取失败] 无法获取网页内容，将返回空摘要 ---")
+        return "提取结果：0\n摘要内容："
+
+    # 如果爬到了内容，让 Agent 进行一次快速格式化/提取
+    agent = create_abstract_extractor_agent()
+    task = Task(
+        description=(
+            f"## 任务描述\n"
+            f"从以下网页文本中提取论文《{paper_title}》的摘要（Abstract）部分。\n"
+            f"网页文本：\n{web_content[:10000]}\n\n"
+            f"## 输出规范\n"
+            f"提取结果：1\n"
+            f"摘要内容：[提取的文本]"
+        ),
+        agent=agent,
+        expected_output="输出提取结果和摘要内容"
+    )
+    
+    from crewai import Crew
+    from callbacks.crewai_callbacks import capture_crewai_output
+    
+    try:
+        with capture_crewai_output():
+            crew = Crew(agents=[agent], tasks=[task], verbose=True)
+            result = crew.kickoff()
+        return str(result)
+    except Exception as e:
+        logging.error(f"Agent格式化摘要失败: {str(e)}")
+        return "提取结果：0\n摘要内容："
 
 def create_abstract_extractor_agent():
-    """创建摘要提取 Agent（合并PDF和网页提取功能，带工具支持）"""
+    """创建格式化 Agent"""
     return Agent(
-        role="论文摘要提取专家",
-        goal="从论文URL获取内容（PDF或网页），然后准确提取摘要部分。对于摘要与引言融合的情况，可以将引言开篇部分一起提取。严禁生成、创造或修改摘要，只能提取现有内容。",
-        backstory="你是一位专业的学术论文摘要提取专家。你能够根据论文URL，使用工具下载PDF或爬取网页内容，然后从获取的内容中准确识别和提取摘要部分。你擅长处理PDF文档和网页两种格式：对于PDF，你能识别'Abstract'、'摘要'等标记；对于网页，你能识别各种网页结构中的摘要内容。你特别了解某些学术会议论文的格式特点：摘要内容可能会融入引言的开篇部分，如果识别到摘要直接连接到引言且引言开篇在逻辑上延续了摘要内容，你会将摘要和引言开篇部分（通常1-2段）一起提取。你严格遵守一个原则：只能提取现有内容中的摘要，绝对不能自己生成、创造、改写或总结摘要。如果内容中没有明确的摘要，你会如实报告提取失败。",
+        role="信息提取员",
+        goal="从杂乱的网页文本中准确提取摘要内容",
+        backstory="你擅长从网页HTML转化后的纯文本中定位'Abstract'部分并提取。你的响应必须极其简练。",
         allow_delegation=False,
         verbose=True,
-        llm=llm,
-        max_iter=3,  # 允许使用工具获取内容
-        max_execution_time=300,
-        tools=[fetch_webpage_tool, arxiv_download_tool]  # 添加工具
+        llm=get_llm(),
+        max_iter=1
     )
 
-
-def create_pdf_processor_agent():
-    """创建PDF处理 Agent（已弃用，保留用于兼容性）"""
-    return create_abstract_extractor_agent()
-
-
-def create_web_abstract_extractor_agent():
-    """创建网页摘要提取 Agent（已弃用，保留用于兼容性）"""
-    return create_abstract_extractor_agent()
-
-
+# 保持旧函数签名兼容性，但内部调用逻辑重构
 def create_abstract_extraction_task(paper_title, paper_url):
-    """创建摘要提取任务（合并PDF和网页提取，使用工具获取内容）"""
-    return Task(
-        description=(
-            f"## 任务目标\n"
-            f"从论文URL获取内容（PDF或网页），然后准确提取摘要部分，仅提取现有内容，严禁生成或修改。\n\n"
-            f"## 输入信息\n"
-            f"**论文标题**：{paper_title}\n\n"
-            f"**论文URL**：{paper_url}\n\n"
-            f"## 执行步骤\n"
-            f"### 步骤1：获取论文内容\n"
-            f"使用工具从论文URL获取内容：\n"
-            f"- **优先使用arXiv论文下载工具**：如果URL包含'arxiv.org'或'arxiv'（包括Google Scholar等跳转链接中的arXiv URL），必须优先使用此工具下载PDF并提取文本（前3页，通常包含摘要）。调用时请传入论文标题参数：arxiv_download_tool(paper_url=\"{paper_url}\", paper_title=\"{paper_title}\")\n"
-            f"  - 注意：此工具会自动处理Google Scholar等跳转链接，提取真实的arXiv URL\n"
-            f"  - 如果工具返回\"不是arXiv论文\"，再使用网页内容获取工具\n"
-            f"- **备选方案网页内容获取工具**：只有在确认不是arXiv论文或arXiv工具明确返回失败时，才使用此工具获取网页内容\n"
-            f"- 获取的内容将用于后续的摘要提取\n\n"
-            f"### 步骤2：判断提取可行性\n"
-            f"- **输出1的条件**：获取的内容中明确存在摘要内容（通常以'Abstract'、'摘要'等标记开始，或论文开头的描述性段落）\n"
-            f"- **输出0的条件**：内容中没有明确的摘要部分、内容不完整、获取失败或无法识别摘要\n"
-            f"- **判断标准**：仅在内容中明确存在摘要内容时输出1，禁止根据标题或其他信息推测\n\n"
-            f"### 步骤3：提取摘要内容（仅在步骤2输出1时执行）\n"
-            f"- **识别范围**：摘要通常在Introduction、Keywords、Key Words或正文开始之前结束\n"
-            f"- **特殊处理：摘要与引言融合**：\n"
-            f"  - 某些学术会议论文中，摘要可能融入引言的开篇部分\n"
-            f"  - 如果摘要直接连接到引言（无明显分隔标记，或引言开篇延续摘要内容），可将摘要和引言开篇部分（通常1-2段）一起提取\n"
-            f"  - **判断标准**：引言开篇在逻辑上延续摘要内容且无明显章节分隔时，可视为摘要的一部分；\n"
-            f"    当引言开始讨论具体研究背景、相关工作等详细内容时，应停止提取\n"
-            f"- **提取要求**：\n"
-            f"  - 完全按照原文逐字提取，禁止任何修改\n"
-            f"  - 仅输出摘要内容（如与引言融合，则包含引言开篇部分）\n"
-            f"  - 禁止包含：论文标题、作者信息、Keywords、正文详细内容、参考文献、导航栏、广告等\n"
-            f"  - 保持摘要的完整性和连贯性（必须是原文内容）\n\n"
-            f"### 步骤4：输出结果（仅在步骤2输出0时执行）\n"
-            f"- 输出0，不输出任何摘要内容，不添加任何说明\n\n"
-            f"## 核心约束（必须严格遵守）\n"
-            f"1. **严格禁止生成内容**：只能提取内容中已存在的摘要，禁止生成、创造、改写、总结或补充任何内容\n"
-            f"2. **严格禁止修改内容**：提取的摘要必须与原文完全一致，禁止任何修改、补充、改写或重新表述\n"
-            f"3. **严格禁止推测**：如果内容中没有明确的摘要部分，必须输出0，禁止根据标题或其他信息推测\n"
-            f"4. **逐字提取原则**：提取的内容必须与原文措辞和表达方式完全一致\n"
-            f"5. **内容不完整处理**：如果内容不完整、无法识别摘要部分或获取失败，必须输出0\n"
-            f"6. **禁止添加元信息**：输出中禁止包含任何Note、说明、注释或解释性文字\n\n"
-            f"## 输出格式（严格遵循）\n"
-            f"```\n"
-            f"提取结果：1\n"
-            f"摘要内容：[提取的摘要文本]\n"
-            f"```\n"
-            f"或\n"
-            f"```\n"
-            f"提取结果：0\n"
-            f"摘要内容：\n"
-            f"```\n\n"
-            f"## 注意事项\n"
-            f"- 严格按照上述格式输出，先输出提取结果（1或0），然后根据结果决定是否输出摘要内容\n"
-            f"- 只能提取现有内容，严禁生成、创造或修改摘要\n"
-            f"- 如果无法提取，必须输出0，禁止添加任何说明或注释"
-        ),
-        agent=create_abstract_extractor_agent(),
-        expected_output="首先输出提取结果（1表示成功，0表示失败），如果成功则输出从原文中逐字提取的摘要内容（严禁生成或修改，禁止添加任何说明或注释）"
-    )
+    """(已弃用工具调用模式) 请改用 extract_abstract_task_logic"""
+    pass
+
 
 
 def create_pdf_abstract_extraction_task(pdf_text, paper_title):
@@ -151,7 +124,7 @@ def create_pdf_abstract_extraction_task(pdf_text, paper_title):
             f"- 如果无法提取，必须输出0，禁止添加任何说明或注释。"
         ),
         agent=create_pdf_processor_agent(),
-        expected_output="首先输出提取结果（1表示成功，0表示失败），如果成功则输出从原文中逐字提取的摘要内容（严禁生成或修改，禁止添加任何说明或注释）"
+        expected_output="首先通过 Thought 过程分析输入文本。最终通过 Final Answer 按照指定格式输出结果：首先输出提取结果（1表示成功，0表示失败），如果成功则输出从原文中逐字提取的摘要内容（严禁生成或修改，禁止添加任何说明或注释）"
     )
 
 
@@ -223,6 +196,6 @@ def create_web_abstract_extraction_task(html_text, paper_title, url=""):
             f"- 如果无法提取，必须输出0，禁止添加任何说明或注释。"
         ),
         agent=create_web_abstract_extractor_agent(),
-        expected_output="首先输出提取结果（1表示成功，0表示失败），如果成功则输出从原文中逐字提取的摘要内容（严禁生成或修改，禁止添加任何说明或注释）"
+        expected_output="首先通过 Thought 过程分析输入的网页文本。最终通过 Final Answer 按照指定格式输出结果：首先输出提取结果（1表示成功，0表示失败），如果成功则输出从原文中逐字提取的摘要内容（严禁生成或修改，禁止添加任何说明或注释）"
     )
 

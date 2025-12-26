@@ -5,7 +5,7 @@ PDF元数据提取Agent - 从PDF提取标题、摘要、作者等信息
 """
 
 from crewai import Agent, Task, Crew
-from config import llm
+from agents.base import get_llm
 import logging
 
 
@@ -26,7 +26,7 @@ def create_pdf_metadata_extractor_agent():
         ),
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=5,
         max_execution_time=120
     )

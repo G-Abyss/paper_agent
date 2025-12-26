@@ -5,7 +5,7 @@
 """
 
 from crewai import Agent, Task
-from config import llm
+from agents.base import get_llm
 
 
 def create_abstract_validator_agent():
@@ -26,7 +26,7 @@ def create_abstract_validation_and_cleaning_agent():
         backstory="你是一位专业的学术内容验证与清洗专家。你具备双重能力：首先，你擅长识别AI生成的内容和真实提取的内容，能够通过分析文本特征、关键词、逻辑连贯性等来判断内容是否来自原文提取；其次，你擅长识别和清理学术文本中的无关内容，包括引用文献标记、图表引用、无意义的格式字符等。你能够在不改变原文意思的前提下，先验证内容真实性，然后清理干扰内容，使文本更加简洁易读。",
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=3,  # 合并任务可能需要更多迭代
         max_execution_time=300
     )

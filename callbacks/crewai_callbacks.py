@@ -18,7 +18,7 @@ from utils.text_utils import remove_ansi_codes
 
 
 # 配置 CrewAI 专用日志输出到文件
-CREWAI_LOG_DIR = 'crewai_logs'  # CrewAI 日志目录
+CREWAI_LOG_DIR = 'logs/crewai_logs'  # CrewAI 日志目录
 os.makedirs(CREWAI_LOG_DIR, exist_ok=True)
 crewai_log_file = os.path.join(CREWAI_LOG_DIR, f'crewai_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
 
@@ -59,12 +59,24 @@ class CrewAILogWriter:
     
     def write(self, message):
         """写入消息到文件和终端"""
+        if not message:
+            return
+            
         # 终端输出保持原样（带颜色）
-        self.terminal.write(message)
+        try:
+            self.terminal.write(message)
+            self.terminal.flush()  # 立即刷新到终端，确保反馈及时
+        except Exception:
+            pass
+            
         # 文件输出移除ANSI转义码（更易读）
         cleaned_message = remove_ansi_codes(message)
-        self.file.write(cleaned_message)
-        self.file.flush()
+        if cleaned_message:
+            try:
+                self.file.write(cleaned_message)
+                self.file.flush()
+            except Exception:
+                pass
         
         # 累积消息到缓冲区
         if cleaned_message:

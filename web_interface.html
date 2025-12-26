@@ -108,6 +108,35 @@
             display: flex;
             flex-direction: column;
             background: var(--panel-left-bg);
+            overflow: hidden;
+        }
+
+        .queue-status-bar {
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .queue-label {
+            margin-right: 8px;
+        }
+
+        .queue-count {
+            color: var(--neon-cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 15px;
+            text-shadow: 0 0 5px rgba(0, 217, 255, 0.5);
+        }
+
+        .queue-count.active {
+            color: #ff9d00;
+            text-shadow: 0 0 8px rgba(255, 157, 0, 0.6);
         }
 
         /* 中间面板 - 对话 */
@@ -239,21 +268,23 @@
             border-bottom: none;
             opacity: 0;
             margin: 0;
+            overflow: hidden;
+            pointer-events: none;
         }
 
         .collapse-arrow-btn {
             position: absolute;
-            bottom: 0;
+            bottom: -5px;
             left: 50%;
-            transform: translateX(-50%) translateY(50%);
-            width: 40px;
-            height: 20px;
-            background: rgba(0, 217, 255, 0.2);
-            border: 1px solid var(--neon-cyan);
+            transform: translateX(-50%);
+            width: 50px;
+            height: 30px;
+            background: rgba(0, 217, 255, 0.3);
+            border: 2px solid var(--neon-cyan);
             border-bottom: none;
             border-radius: 8px 8px 0 0;
             color: var(--neon-cyan);
-            font-size: 12px;
+            font-size: 18px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -261,11 +292,509 @@
             transition: all 0.3s;
             z-index: 5;
             padding: 0;
+            box-shadow: 0 -2px 8px rgba(0, 217, 255, 0.3);
         }
 
         .collapse-arrow-btn:hover {
             background: rgba(0, 217, 255, 0.3);
             box-shadow: 0 2px 8px rgba(0, 217, 255, 0.4);
+        }
+
+        /* 统一的任务队列区域 */
+        .task-queue-section {
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid var(--dark-border);
+            border-bottom: 1px solid var(--dark-border);
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-height: calc(100vh - 500px);
+            flex-shrink: 0;
+            min-height: 100px;
+        }
+
+        /* 当run-options折叠时，增加task-queue-section的高度 */
+        .run-options.collapsed ~ .task-queue-section {
+            max-height: calc(100vh - 250px);
+        }
+
+        .task-queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(0, 217, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            flex-shrink: 0;
+        }
+
+        .task-queue-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .task-tab {
+            background: transparent;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            color: rgba(255, 255, 255, 0.6);
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .task-tab:hover {
+            background: rgba(0, 217, 255, 0.1);
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+        }
+
+        .task-tab.active {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.3);
+        }
+
+        .task-queue-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .task-queue-panel {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .task-queue-panel.active {
+            display: flex;
+        }
+
+        .clear-files-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 0, 84, 0.5);
+            color: var(--neon-red);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .clear-files-btn:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            box-shadow: 0 0 8px rgba(255, 0, 84, 0.3);
+        }
+
+        .file-status-list {
+            flex: 1;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .file-status-empty {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            padding: 20px;
+        }
+
+        /* 待处理文章列表区域 */
+        .paper-processing-list {
+            flex: 1;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        /* 自定义滚动条样式 */
+        .task-queue-panel::-webkit-scrollbar,
+        .file-status-list::-webkit-scrollbar,
+        .paper-processing-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .task-queue-panel::-webkit-scrollbar-track,
+        .file-status-list::-webkit-scrollbar-track,
+        .paper-processing-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .task-queue-panel::-webkit-scrollbar-thumb,
+        .file-status-list::-webkit-scrollbar-thumb,
+        .paper-processing-list::-webkit-scrollbar-thumb {
+            background: rgba(0, 217, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        .task-queue-panel::-webkit-scrollbar-thumb:hover,
+        .file-status-list::-webkit-scrollbar-thumb:hover,
+        .paper-processing-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 217, 255, 0.5);
+        }
+
+        .paper-processing-empty {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            padding: 20px;
+        }
+
+        .paper-processing-item {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            transition: all 0.3s;
+        }
+
+        .paper-processing-item:hover {
+            border-color: var(--neon-cyan);
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .paper-processing-item.relevant {
+            border-color: rgba(0, 255, 100, 0.5);
+        }
+
+        .paper-processing-item-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            margin-bottom: 6px;
+            line-height: 1.4;
+            background: rgba(0, 217, 255, 0.15);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border-left: 3px solid var(--neon-cyan);
+        }
+
+        .paper-processing-item-title-cn {
+            font-size: 13px;
+            font-weight: 600;
+            color: #00ff88;
+            margin-bottom: 6px;
+            line-height: 1.4;
+            background: rgba(0, 255, 136, 0.15);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border-left: 3px solid #00ff88;
+        }
+
+        .paper-processing-item-title-bilingual {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 4px;
+        }
+
+        .paper-processing-item-explanation {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .paper-processing-item-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .paper-action-btn {
+            flex: 1;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Rajdhani', sans-serif;
+            border: 1px solid;
+        }
+
+        .paper-action-btn.interested {
+            background: rgba(0, 255, 100, 0.1);
+            border-color: rgba(0, 255, 100, 0.5);
+            color: var(--neon-green);
+        }
+
+        .paper-action-btn.interested:hover {
+            background: rgba(0, 255, 100, 0.2);
+            border-color: var(--neon-green);
+            box-shadow: 0 0 8px rgba(0, 255, 100, 0.3);
+        }
+
+        .paper-action-btn.not-interested {
+            background: rgba(255, 0, 84, 0.1);
+            border-color: rgba(255, 0, 84, 0.5);
+            color: var(--neon-red);
+        }
+
+        .paper-action-btn.not-interested:hover {
+            background: rgba(255, 0, 84, 0.2);
+            border-color: var(--neon-red);
+            box-shadow: 0 0 8px rgba(255, 0, 84, 0.3);
+        }
+
+        .paper-action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .paper-action-btn.processing {
+            opacity: 0.6;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .paper-action-btn.not-interested.disabled-gray {
+            background: rgba(128, 128, 128, 0.1);
+            border-color: rgba(128, 128, 128, 0.3);
+            color: rgba(255, 255, 255, 0.4);
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Agent导入开关样式 */
+        .agent-import-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .agent-import-toggle input[type="checkbox"] {
+            width: 40px;
+            height: 20px;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .agent-import-toggle input[type="checkbox"]:checked {
+            background: rgba(0, 217, 255, 0.3);
+            border-color: var(--neon-cyan);
+        }
+
+        .agent-import-toggle input[type="checkbox"]::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            top: 1px;
+            left: 1px;
+            transition: all 0.3s;
+        }
+
+        .agent-import-toggle input[type="checkbox"]:checked::before {
+            left: 21px;
+            background: var(--neon-cyan);
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
+        }
+
+        .toggle-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 600;
+        }
+
+        .file-status-item {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .file-status-item:hover {
+            border-color: var(--neon-cyan);
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .file-status-item.uploading {
+            border-color: rgba(0, 217, 255, 0.5);
+            animation: pulse-border 2s infinite;
+        }
+
+        .file-status-item.parsing {
+            border-color: rgba(255, 170, 0, 0.5);
+            animation: pulse-border 2s infinite;
+        }
+
+        .file-status-item.processing {
+            border-color: rgba(123, 44, 191, 0.5);
+            animation: pulse-border 2s infinite;
+        }
+
+        .file-status-item.completed {
+            border-color: rgba(0, 255, 0, 0.5);
+        }
+
+        .file-status-item.failed {
+            border-color: rgba(255, 0, 84, 0.5);
+        }
+
+        @keyframes pulse-border {
+            0%, 100% {
+                box-shadow: 0 0 4px rgba(0, 217, 255, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 12px rgba(0, 217, 255, 0.6);
+            }
+        }
+
+        .file-status-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            width: 24px;
+            text-align: center;
+        }
+
+        .file-status-icon.uploading::after {
+            content: '⏳';
+        }
+
+        .file-status-icon.parsing::after {
+            content: '🔍';
+        }
+
+        .file-status-icon.processing::after {
+            content: '⚙️';
+        }
+
+        .file-status-icon.completed::after {
+            content: '✓';
+            color: var(--neon-green);
+        }
+
+        .file-status-icon.failed::after {
+            content: '✗';
+            color: var(--neon-red);
+        }
+
+        .file-status-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-status-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-status-details {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .file-status-badge.uploading {
+            background: rgba(0, 217, 255, 0.2);
+            color: var(--neon-cyan);
+        }
+
+        .file-status-badge.parsing {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--neon-orange);
+        }
+
+        .file-status-badge.processing {
+            background: rgba(123, 44, 191, 0.2);
+            color: var(--neon-purple);
+        }
+
+        .file-status-badge.completed {
+            background: rgba(0, 255, 0, 0.2);
+            color: var(--neon-green);
+        }
+
+        .file-status-badge.failed {
+            background: rgba(255, 0, 84, 0.2);
+            color: var(--neon-red);
+        }
+
+        .file-status-progress {
+            flex-shrink: 0;
+            width: 60px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .file-status-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+            border-radius: 2px;
+            transition: width 0.3s;
+            animation: progress-shimmer 2s infinite;
+        }
+
+        @keyframes progress-shimmer {
+            0% {
+                background-position: -100% 0;
+            }
+            100% {
+                background-position: 100% 0;
+            }
+        }
+
+        .file-status-item.completed .file-status-progress-bar {
+            background: var(--neon-green);
+            width: 100%;
+            animation: none;
+        }
+
+        .file-status-item.failed .file-status-progress-bar {
+            background: var(--neon-red);
+            width: 100%;
+            animation: none;
         }
 
         .expand-arrow-btn {
@@ -408,6 +937,57 @@
 
         #file-select-text {
             pointer-events: none;
+        }
+
+        .file-drop-zone {
+            width: 100%;
+            min-height: 150px;
+            border: 2px dashed var(--neon-cyan);
+            border-radius: 8px;
+            background: rgba(0, 217, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .file-drop-zone:hover {
+            border-color: var(--neon-purple);
+            background: rgba(0, 217, 255, 0.1);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .file-drop-zone.drag-over {
+            border-color: var(--neon-green);
+            background: rgba(0, 255, 100, 0.1);
+            box-shadow: 0 0 30px rgba(0, 255, 100, 0.5);
+        }
+
+        .file-drop-content {
+            text-align: center;
+            padding: 20px;
+            pointer-events: none;  /* 让内容不阻止点击事件 */
+        }
+
+        .file-drop-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: var(--neon-cyan);
+        }
+
+        .file-drop-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            margin-bottom: 8px;
+        }
+
+        .file-drop-hint {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
         }
 
         .pdf-drop-zone {
@@ -820,18 +1400,130 @@
             margin: 0.5em 0;
         }
 
+        /* 对话控制栏 */
+        .chat-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0;
+            margin-top: auto;
+        }
+
+        .chat-controls-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        /* 联网按钮样式 */
+        .web-search-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 12px;
+            height: 35px;
+            background: rgba(100, 100, 100, 0.2);
+            border: 1px solid rgba(150, 150, 150, 0.3);
+            border-radius: 8px;
+            color: #888;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .web-search-btn i {
+            font-style: normal;
+        }
+
+        .web-search-btn.active {
+            background: rgba(0, 217, 255, 0.15);
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+        }
+
+        /* 模式切换开关样式 */
+        .mode-switch-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            height: 35px;
+        }
+
+        .mode-switch {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid rgba(0, 217, 255, 0.4);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .mode-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 12px;
+            height: 12px;
+            background: var(--neon-cyan);
+            border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            box-shadow: 0 0 5px rgba(0, 217, 255, 0.5);
+        }
+
+        .mode-switch.active {
+            background: rgba(191, 0, 255, 0.2);
+            border-color: rgba(191, 0, 255, 0.4);
+        }
+
+        .mode-switch.active::after {
+            left: calc(100% - 14px);
+            background: var(--neon-purple);
+            box-shadow: 0 0 5px rgba(191, 0, 255, 0.5);
+        }
+
+        .mode-label {
+            transition: color 0.3s;
+            cursor: pointer;
+        }
+
+        .mode-label.active {
+            color: var(--neon-cyan);
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(0, 217, 255, 0.3);
+        }
+
+        .mode-label.active.explore {
+            color: var(--neon-purple);
+            text-shadow: 0 0 5px rgba(191, 0, 255, 0.3);
+        }
+
         /* 对话输入区域 */
         .chat-input-container {
             padding: 15px 20px;
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.6);
             border-top: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 12px;
             backdrop-filter: blur(5px);
+            margin: 0 10px 10px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
         .chat-input-wrapper {
             display: flex;
             gap: 10px;
-            align-items: flex-end;
+            align-items: flex-start;
+            width: 100%;
         }
 
         .chat-input {
@@ -848,6 +1540,7 @@
             outline: none;
             transition: all 0.3s;
             box-shadow: 0 0 10px rgba(0, 217, 255, 0.1);
+            min-height: 60px;
         }
 
         .chat-input:focus {
@@ -861,13 +1554,13 @@
         }
 
         .chat-send-btn {
-            width: 50px;
-            height: 50px;
+            width: 45px;
+            height: 35px;
             background: rgba(0, 217, 255, 0.2);
             border: 1px solid var(--neon-cyan);
             border-radius: 8px;
             color: var(--neon-cyan);
-            font-size: 20px;
+            font-size: 18px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -875,6 +1568,7 @@
             transition: all 0.3s;
             box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
             flex-shrink: 0;
+            margin-left: auto;
         }
 
         .chat-send-btn:hover {
@@ -1912,6 +2606,77 @@
             padding: 8px 12px;
             margin-bottom: 8px;
             border-radius: 4px;
+            position: relative;
+        }
+
+        /* 文章状态颜色标记 */
+        .email-paper-item.status-pending {
+            border-left-color: rgba(0, 217, 255, 0.5);  /* 青色 - 待处理 */
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .email-paper-item.status-processing {
+            border-left-color: rgba(255, 170, 0, 0.8);  /* 橙色 - 处理中 */
+            background: rgba(255, 170, 0, 0.1);
+            animation: pulse-border 2s infinite;
+        }
+
+        .email-paper-item.status-processed {
+            border-left-color: rgba(0, 255, 100, 0.6);  /* 绿色 - 已处理 */
+            background: rgba(0, 255, 100, 0.05);
+        }
+
+        .email-paper-item.status-synchronized {
+            border-left-color: rgba(123, 44, 191, 0.8);  /* 紫色 - 已同步 */
+            background: rgba(123, 44, 191, 0.05);
+        }
+
+        .email-paper-status-badge {
+            position: absolute;
+            top: 4px;
+            right: 8px;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .email-paper-status-badge.pending {
+            background: rgba(0, 217, 255, 0.2);
+            color: var(--neon-cyan);
+        }
+
+        .email-paper-status-badge.processing {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--neon-orange);
+        }
+
+        .email-paper-status-badge.processed {
+            background: rgba(0, 255, 100, 0.2);
+            color: var(--neon-green);
+        }
+
+        .email-paper-status-badge.synchronized {
+            background: rgba(123, 44, 191, 0.2);
+            color: var(--neon-purple);
+        }
+
+        /* 笔记列表状态颜色 */
+        .status-pending {
+            color: var(--neon-cyan) !important;
+        }
+
+        .status-processed {
+            color: var(--neon-green) !important;
+        }
+
+        .status-synchronized {
+            color: var(--neon-purple) !important;
+        }
+
+        .status-processing {
+            color: #ffaa00 !important;
         }
 
         .email-paper-item:last-child {
@@ -2038,6 +2803,74 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        /* 笔记导入流程布局 */
+        .note-flow-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .note-flow-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .note-flow-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 100px;
+        }
+
+        .note-flow-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 5px;
+        }
+
+        .note-flow-count {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--neon-cyan);
+        }
+
+        .note-flow-arrow {
+            font-size: 24px;
+            color: rgba(0, 217, 255, 0.3);
+            font-weight: bold;
+        }
+
+        .note-flow-switch-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 120px;
+        }
+
+        .note-flow-switch-label {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #note-synchronized-count {
+            color: var(--neon-purple) !important;
+        }
+
+        #note-processed-count {
+            color: var(--neon-green) !important;
+        }
     </style>
 </head>
 <body>
@@ -2046,7 +2879,10 @@
         <div class="left-panel panel">
             <div class="panel-header">
                 <h2>来源</h2>
-                <button class="settings-btn" id="tag-settings-btn" onclick="openTagSettingsModal()" title="导入设置">⚙️</button>
+                <div class="header-buttons">
+                    <button class="settings-btn" id="note-btn" onclick="openNoteModal()" title="笔记导入">📓</button>
+                    <button class="settings-btn" id="email-btn" onclick="openEmailModal()" title="邮箱系统">📧</button>
+                </div>
             </div>
             <button class="expand-arrow-btn hidden" id="expand-arrow-btn" title="展开选项">
                 <span>▼</span>
@@ -2059,81 +2895,59 @@
                            value="机器人学、控制理论、遥操作、机器人动力学、力控、机器学习">
                 </div>
                 <div class="option-group">
-                    <label>运行模式</label>
-                    <div class="radio-group">
-                        <label class="radio-option">
-                            <input type="radio" name="mode" value="local" checked>
-                            <span>本地CSV</span>
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="mode" value="remote">
-                            <span>邮箱</span>
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="mode" value="pdf">
-                            <span>论文PDF</span>
-                        </label>
-                    </div>
-                </div>
-                <div class="option-group" id="local-options">
-                    <label>选择CSV文件</label>
-                    <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0, 217, 255, 0.05); border-left: 3px solid var(--neon-cyan); border-radius: 4px;">
-                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 12px; line-height: 1.6;">
-                            <strong style="color: var(--neon-cyan);">CSV文件格式要求：</strong><br>
-                            第一列：论文名称<br>
-                            第二列：网站链接<br>
-                            第三列：摘要
+                    <label>上传文件</label>
+                    <div class="file-drop-zone" id="file-drop-zone">
+                        <input type="file" id="file-input" accept=".csv,.pdf" multiple style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;">
+                        <div class="file-drop-content">
+                            <div class="file-drop-icon">📁</div>
+                            <div class="file-drop-text">请选择文件</div>
+                            <div class="file-drop-hint">支持 CSV 和 PDF 格式，点击选择文件或拖拽文件到此处（支持多选）</div>
                         </div>
                     </div>
-                    <div style="position: relative;">
-                        <div class="file-select-button" id="file-select-button">
-                            <span id="file-select-text">📁 点击选择CSV文件</span>
-                            <input type="file" class="input-field" id="csv-file" 
-                                   accept=".csv" 
-                                   style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;">
-                        </div>
-                    </div>
-                    <div id="csv-file-name" style="margin-top: 8px; color: rgba(255, 255, 255, 0.7); font-size: 12px;">
+                    <div id="file-list-display" style="margin-top: 8px; color: rgba(255, 255, 255, 0.7); font-size: 12px;">
                         未选择文件
                     </div>
                 </div>
-                <div class="option-group hidden" id="remote-options">
-                    <button class="email-button" id="email-btn" style="width: 100%; margin-bottom: 15px;">
-                        📧 邮箱
-                    </button>
-                    <label>日期范围</label>
-                    <div class="date-inputs">
-                        <div style="flex: 1;">
-                            <label style="display: block; font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">开始日期</label>
-                            <input type="date" class="input-field" id="start-date">
-                        </div>
-                        <div style="flex: 1;">
-                            <label style="display: block; font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">结束日期</label>
-                            <input type="date" class="input-field" id="end-date">
-                        </div>
-                    </div>
-                </div>
-                <div class="option-group hidden" id="pdf-options">
-                    <label>选择PDF文件（支持多选）</label>
-                    <div class="pdf-drop-zone" id="pdf-drop-zone">
-                        <input type="file" id="pdf-file" accept=".pdf" multiple style="display: none;">
-                        <div class="pdf-drop-content">
-                            <div class="pdf-drop-icon">📄</div>
-                            <div class="pdf-drop-text">请选择PDF文件</div>
-                            <div class="pdf-drop-hint">点击选择文件或拖拽文件到此处（支持多选）</div>
-                        </div>
-                    </div>
-                    <div id="pdf-file-name" style="margin-top: 8px; color: rgba(255, 255, 255, 0.7); font-size: 12px;">
-                        未选择文件
-                    </div>
-                </div>
-                <button class="run-button" id="run-btn">▶ 开始运行</button>
                 <button class="collapse-arrow-btn" id="collapse-arrow-btn" title="折叠选项">
                     <span>▲</span>
                 </button>
             </div>
+            <!-- 统一的任务队列区域 -->
+            <div class="task-queue-section" id="task-queue-section" style="display: none;">
+                <div class="task-queue-header">
+                    <div class="task-queue-tabs">
+                        <button class="task-tab active" id="tab-files" data-tab="files">已上传文件</button>
+                        <button class="task-tab" id="tab-papers" data-tab="papers">待处理文章</button>
+                    </div>
+                    <button class="clear-files-btn" id="clear-files-btn" title="清空文件列表" style="display: none;">清空</button>
+                </div>
+                <div class="task-queue-content">
+                    <!-- 已上传文件列表 -->
+                    <div class="task-queue-panel active" id="panel-files">
+                        <div class="file-status-list" id="file-status-list">
+                            <div class="file-status-empty">暂无上传文件</div>
+                        </div>
+                    </div>
+                    <!-- 待处理文章列表 -->
+                    <div class="task-queue-panel" id="panel-papers">
+                        <div class="paper-processing-list" id="paper-processing-list">
+                            <div class="paper-processing-empty">暂无待处理文章</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="panel-content">
                 <div class="paper-list" id="paper-list">
+                </div>
+            </div>
+            <!-- 任务队列状态栏 -->
+            <div class="queue-status-bar" id="queue-status-bar">
+                <div class="queue-status-info">
+                    <span class="queue-label">Agent 任务队列:</span>
+                    <span class="queue-count" id="queue-count">0</span>
+                </div>
+                <div class="queue-status-hint" id="queue-status-hint" style="font-size: 11px; opacity: 0.8;">
+                    空闲
                 </div>
             </div>
         </div>
@@ -2143,7 +2957,7 @@
             <div class="panel-header">
                 <h2>对话</h2>
                 <div class="header-buttons">
-                    <button class="settings-btn" id="database-btn" title="数据库管理" onclick="openDatabasePage()">📊</button>
+                    <button class="settings-btn" id="database-btn" title="数据库系统" onclick="openDatabasePage()">📊</button>
                     <button class="settings-btn" id="settings-btn" title="模型设置" onclick="openSettingsModal()">⚙️</button>
                 </div>
             </div>
@@ -2163,6 +2977,18 @@
                             placeholder="输入您的问题，按回车或点击按钮发送..."
                             rows="3"
                         ></textarea>
+                    </div>
+                    <div class="chat-controls">
+                        <div class="chat-controls-left">
+                            <div class="web-search-btn" id="web-search-btn" title="点击切换联网模式">
+                                🌐 联网
+                            </div>
+                            <div class="mode-switch-container">
+                                <span class="mode-label active" id="label-query">查询</span>
+                                <div class="mode-switch" id="mode-switch"></div>
+                                <span class="mode-label" id="label-explore">探索</span>
+                            </div>
+                        </div>
                         <button id="chat-send-btn" class="chat-send-btn" title="发送 (Enter)">
                             <span class="send-icon">↵</span>
                         </button>
@@ -2208,7 +3034,7 @@
         const localOptions = document.getElementById('local-options');
         const remoteOptions = document.getElementById('remote-options');
         const pdfOptions = document.getElementById('pdf-options');
-        const runBtn = document.getElementById('run-btn');
+        const runBtn = document.getElementById('run-btn'); // 可能不存在（已删除开始运行按钮）
         const collapseArrowBtn = document.getElementById('collapse-arrow-btn');
         const expandArrowBtn = document.getElementById('expand-arrow-btn');
         const runOptions = document.querySelector('.run-options');
@@ -2298,49 +3124,75 @@
         function initChatInput() {
             const chatInput = document.getElementById('chat-input');
             const chatSendBtn = document.getElementById('chat-send-btn');
+            const webSearchBtn = document.getElementById('web-search-btn');
+            const modeSwitch = document.getElementById('mode-switch');
+            const labelQuery = document.getElementById('label-query');
+            const labelExplore = document.getElementById('label-explore');
             
-            if (!chatInput || !chatSendBtn) {
-                return;
+            let isWebSearchEnabled = false;
+            let currentChatMode = 'query'; // 'query' 或 'explore'
+            let isSelfExplorationInProgress = false; // 是否正在进行自我探索
+
+            // 锁定/解锁模式开关
+            function lockModeSwitch(lock) {
+                if (modeSwitch) {
+                    modeSwitch.style.pointerEvents = lock ? 'none' : 'auto';
+                    modeSwitch.style.opacity = lock ? '0.5' : '1';
+                }
+                if (labelQuery) {
+                    labelQuery.style.pointerEvents = lock ? 'none' : 'auto';
+                    labelQuery.style.opacity = lock ? '0.5' : '1';
+                }
+                if (labelExplore) {
+                    labelExplore.style.pointerEvents = lock ? 'none' : 'auto';
+                    labelExplore.style.opacity = lock ? '0.5' : '1';
+                }
             }
 
-            // 发送消息函数
-            function sendMessage() {
-                const message = chatInput.value.trim();
-                if (!message) {
+            if (webSearchBtn) {
+                webSearchBtn.addEventListener('click', () => {
+                    isWebSearchEnabled = !isWebSearchEnabled;
+                    webSearchBtn.classList.toggle('active', isWebSearchEnabled);
+                    addLog('info', `联网模式已${isWebSearchEnabled ? '开启' : '关闭'}`);
+                });
+            }
+
+            // 触发agent自我探索
+            function triggerSelfExploration() {
+                if (isSelfExplorationInProgress) {
+                    console.log('自我探索已在进行中，跳过');
                     return;
                 }
 
-                // 禁用输入框和按钮
-                chatInput.disabled = true;
-                chatSendBtn.disabled = true;
+                isSelfExplorationInProgress = true;
+                lockModeSwitch(true); // 锁定开关
 
-                // 显示用户消息
-                addChatMessage('user', message);
-                
                 // 显示思考中消息
-                const thinkingId = addChatMessage('assistant', '正在思考...', true);
-
-                // 清空输入框
-                chatInput.value = '';
-
-                // 发送请求到后端
-                fetch('/api/chat', {
+                const thinkingId = addChatMessage('assistant', '正在进行自我探索，为您推荐研究方向...', true);
+                
+                // 发送空消息以触发自我探索（后端会检测并自动触发）
+                fetch('/api/chat/send', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        message: message
+                        message: '',  // 空消息触发首次探索
+                        mode: 'explore',
+                        web_search_enabled: isWebSearchEnabled
                     })
                 })
                 .then(response => response.json())
                 .then(data => {
                     // 移除思考中消息
                     removeChatMessage(thinkingId);
-
-                    if (data.success) {
-                        // 显示助手回复
-                        addChatMessage('assistant', data.response);
+                    
+                    if (data.success && data.type === 'self_exploration') {
+                        // 显示自我探索结果
+                        addChatMessage('assistant', data.message);
+                    } else if (data.success) {
+                        // 正常回复
+                        addChatMessage('assistant', data.message);
                     } else {
                         // 显示错误消息
                         addChatMessage('assistant', `错误: ${data.error || '未知错误'}`);
@@ -2353,10 +3205,146 @@
                     addChatMessage('assistant', `网络错误: ${error.message}`);
                 })
                 .finally(() => {
+                    // 解锁开关
+                    isSelfExplorationInProgress = false;
+                    lockModeSwitch(false);
+                });
+            }
+
+            if (modeSwitch) {
+                const toggleMode = () => {
+                    // 如果正在进行自我探索，阻止切换
+                    if (isSelfExplorationInProgress) {
+                        addLog('warning', '正在进行自我探索，请稍候...');
+                        return;
+                    }
+
+                    const previousMode = currentChatMode;
+                    currentChatMode = currentChatMode === 'query' ? 'explore' : 'query';
+                    modeSwitch.classList.toggle('active', currentChatMode === 'explore');
+                    labelQuery.classList.toggle('active', currentChatMode === 'query');
+                    labelExplore.classList.toggle('active', currentChatMode === 'explore');
+                    
+                    if (currentChatMode === 'explore') {
+                        labelExplore.classList.add('explore');
+                    } else {
+                        labelExplore.classList.remove('explore');
+                    }
+                    
+                    addLog('info', `对话模式已切换为: ${currentChatMode === 'query' ? '研究员 (查询)' : '导师 (探索)'}`);
+                    
+                    // 如果切换到探索模式，直接触发自我探索（后端会判断是否是首次）
+                    if (currentChatMode === 'explore' && previousMode === 'query') {
+                        console.log('切换到探索模式，触发自我探索');
+                        // 延迟一小段时间，确保模式切换完成
+                        setTimeout(() => {
+                            triggerSelfExploration();
+                        }, 100);
+                    }
+                };
+
+                modeSwitch.addEventListener('click', toggleMode);
+                labelQuery.addEventListener('click', () => { if (currentChatMode !== 'query' && !isSelfExplorationInProgress) toggleMode(); });
+                labelExplore.addEventListener('click', () => { if (currentChatMode !== 'explore' && !isSelfExplorationInProgress) toggleMode(); });
+            }
+            
+            if (!chatInput || !chatSendBtn) {
+                return;
+            }
+
+            // 发送消息函数
+            function sendMessage() {
+                const message = chatInput.value.trim();
+                if (!message) {
+                    return;
+                }
+
+                // 检查是否是自我探索关键词（探索模式下）
+                const exploration_keywords = ['探索新方向', '下一次探索', '新研究方向', '继续探索', '下一个', '新方向', '自我探索'];
+                const isExplorationRequest = currentChatMode === 'explore' && 
+                    exploration_keywords.some(keyword => message.includes(keyword));
+
+                // 如果是自我探索请求，锁定开关
+                if (isExplorationRequest) {
+                    if (isSelfExplorationInProgress) {
+                        addLog('warning', '自我探索已在进行中，请稍候...');
+                        return;
+                    }
+                    isSelfExplorationInProgress = true;
+                    lockModeSwitch(true);
+                }
+
+                // 禁用输入框和按钮
+                chatInput.disabled = true;
+                chatSendBtn.disabled = true;
+
+                // 显示用户消息
+                addChatMessage('user', message);
+                
+                // 显示思考中消息
+                const thinkingId = addChatMessage('assistant', isExplorationRequest ? '正在进行自我探索，为您推荐研究方向...' : '正在思考...', true);
+
+                // 清空输入框
+                chatInput.value = '';
+
+                // 发送请求到后端
+                fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        mode: currentChatMode,
+                        web_search_enabled: isWebSearchEnabled
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // 移除思考中消息
+                    removeChatMessage(thinkingId);
+
+                    if (data.success) {
+                        // 显示助手回复
+                        addChatMessage('assistant', data.message);
+                        
+                        // 如果是自我探索响应，解锁开关
+                        if (data.type === 'self_exploration') {
+                            isSelfExplorationInProgress = false;
+                            lockModeSwitch(false);
+                        }
+                    } else {
+                        // 显示错误消息
+                        addChatMessage('assistant', `错误: ${data.error || '未知错误'}`);
+                        // 如果之前锁定了，则解锁
+                        if (isExplorationRequest) {
+                            isSelfExplorationInProgress = false;
+                            lockModeSwitch(false);
+                        }
+                    }
+                })
+                .catch(error => {
+                    // 移除思考中消息
+                    removeChatMessage(thinkingId);
+                    // 显示错误消息
+                    addChatMessage('assistant', `网络错误: ${error.message}`);
+                    // 如果之前锁定了，则解锁
+                    if (isExplorationRequest) {
+                        isSelfExplorationInProgress = false;
+                        lockModeSwitch(false);
+                    }
+                })
+                .finally(() => {
                     // 重新启用输入框和按钮
                     chatInput.disabled = false;
                     chatSendBtn.disabled = false;
                     chatInput.focus();
+                    
+                    // 如果不是自我探索请求，确保解锁（防止状态不一致）
+                    if (!isExplorationRequest && isSelfExplorationInProgress) {
+                        isSelfExplorationInProgress = false;
+                        lockModeSwitch(false);
+                    }
                 });
             }
 
@@ -2472,26 +3460,28 @@
                     addAgentStatus(data.agent_name, data.status, data.target, data.output, data.message);
                     break;
                 case 'status':
-                    if (data.status === 'running') {
-                        isRunning = true;
-                        isWaitingConfirmation = false;
-                        runBtn.classList.remove('waiting');
-                        runBtn.classList.add('running');
-                        runBtn.textContent = '⏸ 运行中...';
-                        runBtn.disabled = true;
-                    } else if (data.status === 'waiting_confirmation') {
-                        isRunning = false;
-                        isWaitingConfirmation = true;
-                        runBtn.classList.remove('running');
-                        runBtn.classList.add('waiting');
-                        runBtn.textContent = '⏸ 等待人工确认';
-                        runBtn.disabled = false;
-                    } else if (data.status === 'completed' || data.status === 'idle') {
-                        isRunning = false;
-                        isWaitingConfirmation = false;
-                        runBtn.classList.remove('running', 'waiting');
-                        runBtn.textContent = '▶ 开始运行';
-                        runBtn.disabled = false;
+                    if (runBtn) {
+                        if (data.status === 'running') {
+                            isRunning = true;
+                            isWaitingConfirmation = false;
+                            runBtn.classList.remove('waiting');
+                            runBtn.classList.add('running');
+                            runBtn.textContent = '⏸ 运行中...';
+                            runBtn.disabled = true;
+                        } else if (data.status === 'waiting_confirmation') {
+                            isRunning = false;
+                            isWaitingConfirmation = true;
+                            runBtn.classList.remove('running');
+                            runBtn.classList.add('waiting');
+                            runBtn.textContent = '⏸ 等待人工确认';
+                            runBtn.disabled = false;
+                        } else if (data.status === 'completed' || data.status === 'idle') {
+                            isRunning = false;
+                            isWaitingConfirmation = false;
+                            runBtn.classList.remove('running', 'waiting');
+                            runBtn.textContent = '▶ 开始运行';
+                            runBtn.disabled = false;
+                        }
                     }
                     break;
                 case 'waiting_confirmation':
@@ -2500,6 +3490,25 @@
                 case 'paper_ready_for_confirmation':
                     handlePaperReadyForConfirmation(data.paper_id, data.paper);
                     break;
+                case 'queue_status':
+                    updateQueueStatus(data.count);
+                    break;
+            }
+        }
+
+        // 更新任务队列状态显示
+        function updateQueueStatus(count) {
+            const queueCount = document.getElementById('queue-count');
+            const queueHint = document.getElementById('queue-status-hint');
+            if (queueCount) {
+                queueCount.textContent = count;
+                if (count > 0) {
+                    queueCount.classList.add('active');
+                    if (queueHint) queueHint.textContent = '执行中';
+                } else {
+                    queueCount.classList.remove('active');
+                    if (queueHint) queueHint.textContent = '空闲';
+                }
             }
         }
 
@@ -3468,8 +4477,9 @@ contentHtml + '\n' +
             };
         }
 
-        // 开始运行或继续运行
-        runBtn.addEventListener('click', () => {
+        // 开始运行或继续运行（如果runBtn存在）
+        if (runBtn) {
+            runBtn.addEventListener('click', () => {
             // 如果正在等待确认，发送确认请求
             if (isWaitingConfirmation) {
                 confirmAndContinue();
@@ -3544,7 +4554,7 @@ contentHtml + '\n' +
                 if (!pdfFileInput.files || pdfFileInput.files.length === 0) {
                     alert('请先选择PDF文件');
                     isRunning = false;
-                    runBtn.disabled = false;
+                    if (runBtn) runBtn.disabled = false;
                     return;
                 }
                 const formData = new FormData();
@@ -3581,161 +4591,349 @@ contentHtml + '\n' +
             .catch(error => {
                 addLog('error', `请求失败: ${error.message}`);
             });
-        });
-
-        // 显示选中的文件名
-        function initFileSelectHandler() {
-            const csvFileInput = document.getElementById('csv-file');
-            const csvFileName = document.getElementById('csv-file-name');
-            const fileSelectText = document.getElementById('file-select-text');
-            const fileSelectButton = document.getElementById('file-select-button');
-            
-            if (!csvFileInput || !csvFileName || !fileSelectText) {
-                // 如果元素不存在，延迟重试
-                setTimeout(initFileSelectHandler, 100);
-                return;
-            }
-            
-            // 文件选择变化事件
-            csvFileInput.addEventListener('change', function(e) {
-                const file = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
-                const fileName = file ? file.name : '未选择文件';
-                
-                // 更新文件名显示
-                if (csvFileName) {
-                    csvFileName.textContent = fileName;
-                }
-                
-                // 更新按钮文本
-                if (file && fileSelectText) {
-                    fileSelectText.textContent = `✓ ${fileName}`;
-                    fileSelectText.style.color = '#00ff88';
-                } else if (fileSelectText) {
-                    fileSelectText.textContent = '📁 点击选择CSV文件';
-                    fileSelectText.style.color = '#fff';
-                }
             });
-            
-            // 确保按钮点击也能触发文件选择
-            if (fileSelectButton) {
-                fileSelectButton.addEventListener('click', function(e) {
-                    // 如果点击的不是文件输入框本身，触发文件选择
-                    if (e.target !== csvFileInput) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        csvFileInput.click();
-                    }
-                });
-            }
-            
-            if (fileSelectText) {
-                fileSelectText.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    csvFileInput.click();
-                });
-            }
         }
 
-        // 初始化PDF文件选择和拖拽
-        function initPdfFileHandler() {
-            const pdfFileInput = document.getElementById('pdf-file');
-            const pdfDropZone = document.getElementById('pdf-drop-zone');
-            const pdfFileName = document.getElementById('pdf-file-name');
+        // 初始化统一文件上传处理
+        function initFileUploadHandler() {
+            const fileInput = document.getElementById('file-input');
+            const fileDropZone = document.getElementById('file-drop-zone');
+            const fileListDisplay = document.getElementById('file-list-display');
             
-            if (!pdfFileInput || !pdfDropZone || !pdfFileName) {
-                setTimeout(initPdfFileHandler, 100);
+            if (!fileInput || !fileDropZone || !fileListDisplay) {
+                setTimeout(initFileUploadHandler, 100);
                 return;
             }
             
-            const pdfDropContent = pdfDropZone.querySelector('.pdf-drop-content');
+            const fileDropContent = fileDropZone.querySelector('.file-drop-content');
             
-            // 点击选择文件
-            pdfDropZone.addEventListener('click', function(e) {
-                if (e.target !== pdfFileInput) {
-                    pdfFileInput.click();
+            // 点击选择文件（确保点击整个区域都能触发）
+            fileDropZone.addEventListener('click', function(e) {
+                // 如果点击的不是文件输入框本身，触发文件选择
+                if (e.target !== fileInput) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fileInput.click();
                 }
             });
             
+            // 确保文件输入框本身也能触发
+            if (fileInput) {
+                fileInput.style.pointerEvents = 'auto';
+                fileInput.style.cursor = 'pointer';
+                fileInput.style.position = 'absolute';
+                fileInput.style.top = '0';
+                fileInput.style.left = '0';
+                fileInput.style.width = '100%';
+                fileInput.style.height = '100%';
+                fileInput.style.opacity = '0';
+                fileInput.style.zIndex = '10';
+            }
+            
+            // 确保文件输入框本身也能触发（不需要额外处理，因为已经设置了样式）
+            
             // 文件选择变化事件（支持多文件）
-            pdfFileInput.addEventListener('change', function(e) {
+            fileInput.addEventListener('change', function(e) {
                 const files = e.target.files;
-                handlePdfFileSelect(files, pdfFileName, pdfDropContent);
+                handleFileSelect(files, fileListDisplay, fileDropContent);
+                // 自动上传文件
+                if (files && files.length > 0) {
+                    uploadFiles(files);
+                }
             });
             
             // 拖拽事件
-            pdfDropZone.addEventListener('dragover', function(e) {
+            fileDropZone.addEventListener('dragover', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                pdfDropZone.classList.add('drag-over');
+                fileDropZone.classList.add('drag-over');
             });
             
-            pdfDropZone.addEventListener('dragleave', function(e) {
+            fileDropZone.addEventListener('dragleave', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                pdfDropZone.classList.remove('drag-over');
+                fileDropZone.classList.remove('drag-over');
             });
             
-            pdfDropZone.addEventListener('drop', function(e) {
+            fileDropZone.addEventListener('drop', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                pdfDropZone.classList.remove('drag-over');
+                fileDropZone.classList.remove('drag-over');
                 
                 const files = e.dataTransfer.files;
                 if (files && files.length > 0) {
-                    // 过滤出PDF文件
-                    const pdfFiles = Array.from(files).filter(file => 
-                        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-                    );
+                    // 过滤出CSV和PDF文件
+                    const validFiles = Array.from(files).filter(file => {
+                        const ext = file.name.toLowerCase();
+                        return ext.endsWith('.csv') || ext.endsWith('.pdf');
+                    });
                     
-                    if (pdfFiles.length > 0) {
+                    if (validFiles.length > 0) {
                         // 创建新的FileList对象并设置到input
                         const dataTransfer = new DataTransfer();
-                        pdfFiles.forEach(file => dataTransfer.items.add(file));
-                        pdfFileInput.files = dataTransfer.files;
-                        handlePdfFileSelect(pdfFileInput.files, pdfFileName, pdfDropContent);
+                        validFiles.forEach(file => dataTransfer.items.add(file));
+                        fileInput.files = dataTransfer.files;
+                        handleFileSelect(fileInput.files, fileListDisplay, fileDropContent);
+                        // 自动上传文件
+                        uploadFiles(fileInput.files);
                     } else {
-                        alert('请选择PDF文件');
+                        alert('请选择 CSV 或 PDF 文件');
                     }
                 }
             });
         }
         
-        // 处理PDF文件选择（支持多文件）
-        function handlePdfFileSelect(files, pdfFileName, pdfDropContent) {
+        // 处理文件选择（支持多文件）
+        function handleFileSelect(files, fileListDisplay, fileDropContent) {
             if (files && files.length > 0) {
                 const fileCount = files.length;
+                const fileNames = Array.from(files).map(f => f.name);
+                
                 if (fileCount === 1) {
-                    pdfFileName.textContent = files[0].name;
+                    fileListDisplay.textContent = `已选择: ${fileNames[0]}`;
                 } else {
-                    pdfFileName.textContent = `已选择 ${fileCount} 个文件: ${Array.from(files).map(f => f.name).join(', ')}`;
+                    fileListDisplay.textContent = `已选择 ${fileCount} 个文件: ${fileNames.join(', ')}`;
                 }
-                pdfFileName.style.color = '#00ff88';
+                fileListDisplay.style.color = '#00ff88';
                 
                 // 更新拖拽区域显示
-                const icon = pdfDropContent.querySelector('.pdf-drop-icon');
-                const text = pdfDropContent.querySelector('.pdf-drop-text');
+                const icon = fileDropContent.querySelector('.file-drop-icon');
+                const text = fileDropContent.querySelector('.file-drop-text');
                 if (icon) icon.textContent = '✓';
                 if (text) {
                     if (fileCount === 1) {
-                        text.textContent = files[0].name;
+                        text.textContent = fileNames[0];
                     } else {
-                        text.textContent = `已选择 ${fileCount} 个PDF文件`;
+                        text.textContent = `已选择 ${fileCount} 个文件`;
                     }
                     text.style.color = '#00ff88';
                 }
             } else {
-                pdfFileName.textContent = '未选择文件';
-                pdfFileName.style.color = 'rgba(255, 255, 255, 0.7)';
+                fileListDisplay.textContent = '未选择文件';
+                fileListDisplay.style.color = 'rgba(255, 255, 255, 0.7)';
                 
                 // 恢复拖拽区域显示
-                const icon = pdfDropContent.querySelector('.pdf-drop-icon');
-                const text = pdfDropContent.querySelector('.pdf-drop-text');
-                if (icon) icon.textContent = '📄';
+                const icon = fileDropContent.querySelector('.file-drop-icon');
+                const text = fileDropContent.querySelector('.file-drop-text');
+                if (icon) icon.textContent = '📁';
                 if (text) {
-                    text.textContent = '请选择PDF文件';
+                    text.textContent = '请选择文件';
                     text.style.color = 'var(--neon-cyan)';
                 }
+            }
+        }
+        
+        // 文件状态管理
+        const fileStatusMap = new Map(); // 存储文件状态 {fileName: {status, details, progress}}
+
+        // 添加文件到状态列表
+        function addFileToStatusList(fileName, file) {
+            const fileId = `${fileName}_${Date.now()}`;
+            const statusItem = {
+                id: fileId,
+                fileName: fileName,
+                file: file,
+                status: 'uploading',
+                details: '准备上传...',
+                progress: 0,
+                timestamp: Date.now()
+            };
+            
+            fileStatusMap.set(fileId, statusItem);
+            updateFileStatusDisplay();
+            return fileId;
+        }
+
+        // 更新文件状态
+        function updateFileStatus(fileId, status, details, progress) {
+            const statusItem = fileStatusMap.get(fileId);
+            if (statusItem) {
+                statusItem.status = status;
+                statusItem.details = details || statusItem.details;
+                statusItem.progress = progress !== undefined ? progress : statusItem.progress;
+                updateFileStatusDisplay();
+            }
+        }
+
+        // 更新文件状态显示
+        function updateFileStatusDisplay() {
+            const fileStatusList = document.getElementById('file-status-list');
+            if (!fileStatusList) return;
+
+            const taskQueueSection = document.getElementById('task-queue-section');
+            
+            if (fileStatusMap.size === 0) {
+                fileStatusList.innerHTML = '<div class="file-status-empty">暂无上传文件</div>';
+                // 如果两个列表都为空，隐藏整个区域
+                if (taskQueueSection && pendingPapers.length === 0) {
+                    taskQueueSection.style.display = 'none';
+                }
+                return;
+            }
+
+            // 显示任务队列区域，并切换到文件标签
+            if (taskQueueSection) {
+                taskQueueSection.style.display = 'flex';
+                // 切换到文件标签
+                switchTaskTab('files');
+            }
+
+            fileStatusList.innerHTML = '';
+            
+            // 按时间戳倒序排列（最新的在上）
+            const sortedFiles = Array.from(fileStatusMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+            
+            sortedFiles.forEach(item => {
+                const fileItem = document.createElement('div');
+                fileItem.className = `file-status-item ${item.status}`;
+                fileItem.dataset.fileId = item.id;
+                
+                const statusLabels = {
+                    'uploading': '上传中',
+                    'parsing': '解析中',
+                    'processing': '知识工程处理中',
+                    'completed': '完成',
+                    'failed': '失败'
+                };
+                
+                fileItem.innerHTML = `
+                    <div class="file-status-icon ${item.status}"></div>
+                    <div class="file-status-info">
+                        <div class="file-status-name" title="${item.fileName}">${item.fileName}</div>
+                        <div class="file-status-details">
+                            <span class="file-status-badge ${item.status}">${statusLabels[item.status] || item.status}</span>
+                            <span>${item.details}</span>
+                        </div>
+                    </div>
+                    <div class="file-status-progress">
+                        <div class="file-status-progress-bar" style="width: ${item.progress}%"></div>
+                    </div>
+                `;
+                
+                fileStatusList.appendChild(fileItem);
+            });
+        }
+
+        // 清空文件状态列表
+        function clearFileStatusList() {
+            fileStatusMap.clear();
+            updateFileStatusDisplay();
+        }
+
+        // 上传文件到后端解析
+        function uploadFiles(files) {
+            if (!files || files.length === 0) {
+                return;
+            }
+            
+            // 逐个上传文件
+            Array.from(files).forEach((file, index) => {
+                const fileId = addFileToStatusList(file.name, file);
+                
+                addLog('info', `正在上传文件: ${file.name}...`);
+                updateFileStatus(fileId, 'uploading', '正在上传文件...', 10);
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                fetch('/api/upload/parse', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    updateFileStatus(fileId, 'parsing', '文件上传成功，开始解析...', 30);
+                    // 检查响应状态
+                    if (!response.ok) {
+                        // 尝试解析错误响应
+                        return response.json().then(err => {
+                            throw new Error(err.error || `HTTP错误: ${response.status}`);
+                        }).catch(() => {
+                            throw new Error(`HTTP错误: ${response.status}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        updateFileStatus(fileId, 'processing', '解析完成，知识工程处理中...', 60);
+                        addLog('success', `文件解析成功: ${file.name}`);
+                        if (data.message) {
+                            addLog('info', data.message);
+                        }
+                        
+                        // 显示解析结果
+                        displayParseResult(data, file.name, fileId);
+                        
+                        // 更新为完成状态
+                        const knowledgeResult = data.data?.knowledge_result;
+                        if (knowledgeResult && knowledgeResult.success) {
+                            const chunksStored = knowledgeResult.chunks_stored || 0;
+                            updateFileStatus(fileId, 'completed', `处理完成，已存储 ${chunksStored} 个文本块`, 100);
+                        } else {
+                            updateFileStatus(fileId, 'completed', '处理完成', 100);
+                        }
+                    } else {
+                        const errorMsg = data.error || '未知错误';
+                        updateFileStatus(fileId, 'failed', `处理失败: ${errorMsg}`, 100);
+                        addLog('error', `文件解析失败: ${file.name} - ${errorMsg}`);
+                    }
+                })
+                .catch(error => {
+                    const errorMsg = error.message || '未知错误';
+                    updateFileStatus(fileId, 'failed', `上传失败: ${errorMsg}`, 100);
+                    addLog('error', `文件上传失败: ${file.name} - ${errorMsg}`);
+                    console.error('文件上传错误:', error);
+                });
+            });
+        }
+        
+        // 显示解析结果
+        function displayParseResult(responseData, fileName, fileId) {
+            // responseData是完整的响应对象，包含success、data、message等字段
+            const data = responseData.data || {};
+            const parseData = data.parse_result || data.data || data;
+            const knowledgeResult = data.knowledge_result;
+            
+            const sourceType = parseData.file_type || parseData.source_type;
+            
+            if (sourceType === 'csv') {
+                addLog('info', `CSV文件解析结果: ${parseData.total_rows || 0} 行, ${parseData.columns?.length || 0} 列`);
+                if (parseData.columns) {
+                    addLog('info', `列信息: ${parseData.columns.map(c => c.name).join(', ')}`);
+                }
+            } else if (sourceType === 'pdf') {
+                const metadata = parseData.metadata || {};
+                addLog('info', `PDF文件解析结果: ${parseData.page_count || 0} 页`);
+                if (metadata.title) {
+                    addLog('info', `标题: ${metadata.title}`);
+                }
+                if (metadata.authors) {
+                    addLog('info', `作者: ${metadata.authors}`);
+                }
+            }
+            
+            // 显示知识工程处理结果
+            if (knowledgeResult) {
+                if (knowledgeResult.success) {
+                    addLog('success', `✓ 知识工程处理成功: 已存储 ${knowledgeResult.chunks_stored || 0} 个文本块到知识库`);
+                    addLog('info', `论文ID: ${knowledgeResult.paper_id || 'N/A'}`);
+                } else {
+                    addLog('error', `✗ 知识工程处理失败: ${knowledgeResult.error || '未知错误'}`);
+                }
+            }
+        }
+
+        // 初始化清空文件列表按钮
+        function initClearFilesButton() {
+            const clearBtn = document.getElementById('clear-files-btn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    if (fileStatusMap.size > 0) {
+                        if (confirm('确定要清空所有文件状态记录吗？')) {
+                            clearFileStatusList();
+                        }
+                    }
+                });
             }
         }
 
@@ -3743,18 +4941,18 @@ contentHtml + '\n' +
         // 确保DOM加载完成后再初始化
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
-                initFileSelectHandler();
-                initPdfFileHandler();
+                initFileUploadHandler();
                 initCollapseButton();
                 initChatInput();
+                initClearFilesButton();
                 connectWebSocket();
             });
         } else {
             // DOM已经加载完成
-            initFileSelectHandler();
-            initPdfFileHandler();
+            initFileUploadHandler();
             initCollapseButton();
             initChatInput();
+            initClearFilesButton();
             connectWebSocket();
         }
     </script>
@@ -3763,13 +4961,26 @@ contentHtml + '\n' +
     <div class="settings-modal" id="settings-modal">
         <div class="settings-content">
             <div class="settings-header">
-                <h3>模型设置</h3>
+                <h3>设置</h3>
                 <button class="settings-close" id="settings-close">✕</button>
             </div>
             <div class="settings-body">
-                <button class="btn-add-model" id="btn-add-model">+ 添加模型</button>
-                <div class="model-list" id="model-list">
-                    <!-- 模型列表将在这里动态生成 -->
+                <!-- 模型配置部分 -->
+                <div class="settings-section">
+                    <h4 style="color: var(--neon-cyan); margin-bottom: 15px; font-size: 16px;">🤖 模型配置</h4>
+                    <button class="btn-add-model" id="btn-add-model">+ 添加模型</button>
+                    <div class="model-list" id="model-list">
+                        <!-- 模型列表将在这里动态生成 -->
+                    </div>
+                </div>
+
+                <!-- API配置部分 -->
+                <div class="settings-section">
+                    <h4 style="color: var(--neon-purple); margin-bottom: 15px; font-size: 16px;">🔑 外部服务配置</h4>
+                    <div class="setting-item">
+                        <label>Firecrawl API Key:</label>
+                        <input type="password" id="firecrawl-api-key" placeholder="输入您的 Firecrawl API Key" style="width: 100%; background: rgba(0, 20, 40, 0.6); border: 1px solid rgba(191, 0, 255, 0.3); border-radius: 4px; padding: 8px; color: var(--neon-purple); margin-top: 5px;">
+                    </div>
                 </div>
             </div>
             <div class="settings-footer">
@@ -3784,7 +4995,7 @@ contentHtml + '\n' +
         let models = [];
         let settingsInitialized = false;
 
-        // 全局函数：打开设置弹窗（作为备选方案）
+            // 全局函数：打开设置弹窗（作为备选方案）
         window.openSettingsModal = function() {
             if (!settingsInitialized) {
                 initSettingsModal();
@@ -3871,6 +5082,8 @@ contentHtml + '\n' +
                                 models[0].is_default = true;
                             }
                             renderModels();
+                            // 加载外部服务配置
+                            loadExternalServices();
                         } else {
                             addLog('error', `加载模型配置失败: ${data.error}`);
                         }
@@ -4035,6 +5248,14 @@ contentHtml + '\n' +
                     return;
                 }
 
+                // 保存外部服务配置
+                const firecrawlKey = document.getElementById('firecrawl-api-key').value;
+                fetch('/api/settings/external_services', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ firecrawl_api_key: firecrawlKey })
+                }).catch(err => console.error('保存外部服务配置失败:', err));
+
                 fetch('/api/models', {
                     method: 'POST',
                     headers: {
@@ -4056,8 +5277,26 @@ contentHtml + '\n' +
                 });
             });
 
+            // 加载外部服务配置
+            loadExternalServices();
+
             settingsInitialized = true;
             return true;
+        }
+
+        // 加载外部服务配置
+        function loadExternalServices() {
+            fetch('/api/settings/external_services')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.firecrawl_api_key) {
+                            const input = document.getElementById('firecrawl-api-key');
+                            if (input) input.value = data.firecrawl_api_key;
+                        }
+                    }
+                })
+                .catch(error => console.error('加载外部服务配置失败:', error));
         }
 
         // 更新模型配置
@@ -4192,40 +5431,6 @@ contentHtml + '\n' +
         }
     </script>
 
-    <!-- Tag设置模态框 -->
-    <div class="settings-modal" id="tag-settings-modal">
-        <div class="settings-content">
-            <div class="settings-header">
-                <h3>导入设置</h3>
-                <button class="settings-close" id="tag-settings-close">✕</button>
-            </div>
-            <div class="settings-body">
-                <div class="option-group">
-                    <label>Tag标签</label>
-                    <div style="margin-top: 10px;">
-                        <label style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <input type="radio" name="tag-mode" value="default" id="tag-mode-default" checked>
-                            <span style="margin-left: 8px;">Default（默认）</span>
-                        </label>
-                        <label style="display: flex; align-items: center;">
-                            <input type="radio" name="tag-mode" value="custom" id="tag-mode-custom">
-                            <span style="margin-left: 8px;">Custom（自定义）</span>
-                        </label>
-                    </div>
-                    <div id="custom-tag-container" style="margin-top: 15px; display: none;">
-                        <input type="text" class="input-field" id="custom-tag-input" placeholder="输入自定义tag标签...">
-                        <p style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 5px;">
-                            选择Custom后，所有导入方式（CSV、邮箱、PDF）都将使用此tag
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="settings-footer">
-                <button class="btn-save" onclick="saveTagSettings()">保存</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 邮箱设置模态框 -->
     <div class="email-settings-modal" id="email-settings-modal">
         <div class="email-settings-content">
@@ -4269,10 +5474,96 @@ contentHtml + '\n' +
     </div>
 
     <!-- 邮件信息模态框 -->
+    <!-- 笔记导入模态框 -->
+    <div class="email-modal" id="note-modal">
+        <div class="email-content">
+            <div class="email-header">
+                <h3>📓 笔记系统</h3>
+                <button class="email-close" onclick="closeNoteModal()">✕</button>
+            </div>
+            <div class="email-body">
+                <div class="note-flow-container">
+                    <!-- 第一行：待处理 -> 已导入 -> 已同步 -->
+                    <div class="note-flow-row">
+                        <div class="note-flow-step">
+                            <span class="note-flow-label">待处理</span>
+                            <span id="note-pending-count" class="note-flow-count">0</span>
+                        </div>
+                        <div class="note-flow-arrow">→</div>
+                        <div class="note-flow-step">
+                            <span class="note-flow-label">已导入</span>
+                            <span id="note-processed-count" class="note-flow-count">0</span>
+                        </div>
+                        <div class="note-flow-arrow">→</div>
+                        <div class="note-flow-step">
+                            <span class="note-flow-label">已同步</span>
+                            <span id="note-synchronized-count" class="note-flow-count">0</span>
+                        </div>
+                    </div>
+                    <!-- 第二行：开关 -->
+                    <div class="note-flow-row" style="margin-top: 5px;">
+                        <div style="width: 100px;"></div> <!-- 对齐待处理 -->
+                        <div class="note-flow-switch-container">
+                            <label class="agent-import-toggle" style="margin: 0;" title="开启后，系统会自动处理笔记并导入数据库">
+                                <input type="checkbox" id="note-agent-import-switch" onchange="toggleNoteAgentImport()">
+                                <span class="toggle-label">Agent 导入</span>
+                            </label>
+                            <span class="note-flow-switch-label">自动解析导入</span>
+                        </div>
+                        <div style="width: 100px;"></div> <!-- 对齐已导入 -->
+                        <div class="note-flow-switch-container">
+                            <label class="agent-import-toggle" style="margin: 0;" title="开启后，大脑会自动逐篇吸收已处理的笔记到认知边界">
+                                <input type="checkbox" id="brain-sync-switch" onchange="toggleBrainSync()">
+                                <span class="toggle-label">知识同步</span>
+                            </label>
+                            <span class="note-flow-switch-label">认知图谱整合</span>
+                        </div>
+                        <div style="width: 100px;"></div> <!-- 对齐已同步 -->
+                    </div>
+                </div>
+
+                <div class="email-summary" id="note-stats" style="margin-top: 0; padding: 10px; background: none; border: none; justify-content: flex-end;">
+                    <div class="email-summary-item" style="margin: 0;">
+                        <span class="email-summary-label">文件总数:</span>
+                        <span id="note-total-count" style="color: rgba(255,255,255,0.6);">0</span>
+                    </div>
+                </div>
+
+                <div class="email-list" id="note-list-container">
+                    <!-- 笔记列表将在此处以卡片形式动态生成 -->
+                    <div style="text-align: center; padding: 40px 20px; color: rgba(255, 255, 255, 0.5);">
+                        正在扫描笔记文件...
+                    </div>
+                </div>
+            </div>
+            
+            <div class="email-footer">
+                <div class="email-footer-buttons">
+                    <button class="btn-settings" id="note-settings-btn" onclick="toggleNoteSettings()" title="设置笔记路径">⚙️</button>
+                    <button class="btn-update" onclick="refreshNoteFileList()">刷新列表</button>
+                </div>
+            </div>
+
+            <!-- 笔记路径设置浮层 -->
+            <div id="note-settings-panel" style="display: none; position: absolute; bottom: 70px; left: 20px; right: 20px; padding: 20px; background: var(--dark-panel); border: 2px solid var(--neon-cyan); border-radius: 12px; z-index: 1001; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);">
+                <div class="option-group">
+                    <label style="color: var(--neon-cyan); font-size: 14px; margin-bottom: 12px; display: block; font-family: 'Rajdhani', sans-serif; font-weight: 600; text-transform: uppercase;">笔记存放路径</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" class="input-field" id="note-path-input" readonly placeholder="点击右侧按钮选择文件夹..." style="background: rgba(0, 0, 0, 0.3); border-color: rgba(0, 217, 255, 0.3); flex: 1;">
+                        <button class="btn-update" style="width: auto; height: 38px; min-width: 80px;" onclick="selectNoteFolder()">浏览...</button>
+                        <button class="btn-update" style="width: auto; height: 38px; min-width: 100px; background: rgba(0, 255, 100, 0.2); border-color: var(--neon-green); color: var(--neon-green);" onclick="saveNoteSettings()">保存设置</button>
+                    </div>
+                    <small style="color: rgba(255, 255, 255, 0.5); margin-top: 10px; display: block;">设置后系统将自动扫描该文件夹下的所有支持格式的笔记文件</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邮箱系统模态框 -->
     <div class="email-modal" id="email-modal">
         <div class="email-content">
             <div class="email-header">
-                <h3>📧 邮箱信息</h3>
+                <h3>📧 邮箱系统</h3>
                 <button class="email-close" id="email-close">✕</button>
             </div>
             <div class="email-body">
@@ -4302,6 +5593,10 @@ contentHtml + '\n' +
                 </div>
                 <div class="email-footer-buttons">
                     <button class="btn-settings" id="btn-email-settings" title="邮箱设置">⚙️</button>
+                    <label class="agent-import-toggle" title="开启后，系统会在空闲时自动处理待处理的文章">
+                        <input type="checkbox" id="agent-import-switch">
+                        <span class="toggle-label">Agent导入</span>
+                    </label>
                     <button class="btn-update" id="btn-update-emails">更新</button>
                 </div>
             </div>
@@ -4362,8 +5657,16 @@ contentHtml + '\n' +
                     ? email.papers.map(paper => {
                         const title = paper.title || '无标题';
                         const link = paper.link || '#';
+                        const status = paper.processing_status || 'pending';
+                        const statusText = {
+                            'pending': '待处理',
+                            'processing': '处理中',
+                            'processed': '已处理'
+                        }[status] || '待处理';
+                        const statusClass = `status-${status}`;
                         return `
-                        <div class="email-paper-item">
+                        <div class="email-paper-item ${statusClass}">
+                            <span class="email-paper-status-badge ${status}">${statusText}</span>
                             ${link && link !== '#' ? `<a href="${link}" target="_blank" class="email-paper-title-link">${title}</a>` : `<div class="email-paper-title">${title}</div>`}
                         </div>
                     `;
@@ -4457,6 +5760,262 @@ contentHtml + '\n' +
                 });
         }
 
+        // --- 笔记系统逻辑 ---
+        let noteModal = null;
+        let noteFiles = [];
+
+        function initNoteModal() {
+            noteModal = document.getElementById('note-modal');
+            
+            // 点击模态框外部关闭
+            window.addEventListener('click', (event) => {
+                if (event.target === noteModal) {
+                    closeNoteModal();
+                }
+            });
+
+            // 监听 Socket.IO 消息更新文件状态
+            if (socket) {
+                socket.on('message', (data) => {
+                    if (data.type === 'note_file_updated') {
+                        updateNoteFileUIStatus(data.file_id, data.status);
+                    }
+                });
+            }
+        }
+
+        window.openNoteModal = function() {
+            if (!noteModal) initNoteModal();
+            noteModal.classList.add('active');
+            loadNoteSettings();
+            refreshNoteFileList();
+        };
+
+        window.closeNoteModal = function() {
+            if (noteModal) noteModal.classList.remove('active');
+        };
+
+        window.toggleNoteSettings = function() {
+            const panel = document.getElementById('note-settings-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        };
+
+        window.selectNoteFolder = function() {
+            addLog('info', '请在弹出的系统对话框中选择笔记文件夹...');
+            fetch('/api/utils/select-folder')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.path) {
+                        document.getElementById('note-path-input').value = data.path;
+                        addLog('success', `已选择文件夹: ${data.path}`);
+                    } else if (data.message === '取消选择') {
+                        addLog('info', '已取消选择文件夹');
+                    }
+                })
+                .catch(err => {
+                    console.error('选择文件夹出错:', err);
+                    addLog('error', '无法打开文件夹选择对话框，请确保后端服务运行正常');
+                });
+        };
+
+        function loadNoteSettings() {
+            fetch('/api/note/settings')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.note_path) {
+                        document.getElementById('note-path-input').value = data.note_path;
+                    } else {
+                        document.getElementById('note-path-input').value = '';
+                    }
+                    document.getElementById('note-agent-import-switch').checked = !!data.agent_import_active;
+                    const brainSyncSwitch = document.getElementById('brain-sync-switch');
+                    if (brainSyncSwitch) {
+                        brainSyncSwitch.checked = !!data.brain_sync_active;
+                    }
+                });
+        }
+
+        window.saveNoteSettings = function() {
+            const path = document.getElementById('note-path-input').value.trim();
+            if (!path) {
+                alert('请输入有效的路径');
+                return;
+            }
+
+            fetch('/api/note/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note_path: path })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog('success', '笔记路径设置已保存');
+                    toggleNoteSettings();
+                    refreshNoteFileList();
+                } else {
+                    alert('保存失败: ' + data.error);
+                }
+            });
+        };
+
+        function refreshNoteFileList() {
+            const container = document.getElementById('note-list-container');
+            if (!container) return;
+            container.innerHTML = '<div style="text-align: center; padding: 40px 20px; color: rgba(255, 255, 255, 0.5);">正在扫描...</div>';
+
+            fetch('/api/note/files')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        noteFiles = data.files;
+                        renderNoteFileList();
+                    } else {
+                        container.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: var(--neon-red);">${data.error}</div>`;
+                    }
+                });
+        }
+
+        function renderNoteFileList() {
+            const container = document.getElementById('note-list-container');
+            if (!container) return;
+            if (noteFiles.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 40px 20px; color: rgba(255, 255, 255, 0.5);">文件夹为空或未包含支持的文件类型</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            let pending = 0;
+            let processed = 0;
+            let synchronized = 0;
+
+            noteFiles.forEach(file => {
+                if (file.status === 'synchronized') synchronized++;
+                else if (file.status === 'processed') processed++;
+                else pending++;
+
+                const statusText = file.status === 'synchronized' ? '已同步' : (file.status === 'processed' ? '已导入' : '待处理');
+                
+                const statusClass = `status-${file.status}`;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = `email-item note-item`;
+                itemDiv.id = `note-file-${file.id.replace(/\//g, '_').replace(/\./g, '_')}`;
+                
+                itemDiv.innerHTML = `
+                    <div class="email-item-header">
+                        <div class="email-item-subject" title="${file.path}">${file.name}</div>
+                        <div class="email-item-date">${file.mod_time}</div>
+                    </div>
+                    <div class="email-item-papers" style="border-top: none; margin-top: 5px; padding-top: 0;">
+                        <div class="email-paper-item ${statusClass}">
+                            <span class="email-paper-status-badge ${file.status}">${statusText}</span>
+                            <div class="email-paper-title" style="color: rgba(255,255,255,0.7); font-size: 12px;">
+                                类型: ${file.type.toUpperCase()} | 路径: ${file.rel_path}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(itemDiv);
+            });
+
+            const totalEl = document.getElementById('note-total-count');
+            const pendingEl = document.getElementById('note-pending-count');
+            const processedEl = document.getElementById('note-processed-count');
+            const synchronizedEl = document.getElementById('note-synchronized-count');
+            
+            if (totalEl) totalEl.textContent = noteFiles.length;
+            if (pendingEl) pendingEl.textContent = pending;
+            if (processedEl) processedEl.textContent = processed;
+            if (synchronizedEl) synchronizedEl.textContent = synchronized;
+        }
+
+        function updateNoteFileUIStatus(fileId, status) {
+            const elementId = `note-file-${fileId.replace(/\//g, '_').replace(/\./g, '_')}`;
+            const item = document.getElementById(elementId);
+            if (item) {
+                const paperItem = item.querySelector('.email-paper-item');
+                const badge = item.querySelector('.email-paper-status-badge');
+                
+                if (paperItem) {
+                    paperItem.className = `email-paper-item status-${status}`;
+                }
+                if (badge) {
+                    badge.className = `email-paper-status-badge ${status}`;
+                    let statusText = '待处理';
+                    if (status === 'synchronized') statusText = '已同步';
+                    else if (status === 'processed') statusText = '已导入';
+                    badge.textContent = statusText;
+                }
+                
+                // 更新统计
+                const pendingEl = document.getElementById('note-pending-count');
+                const processedEl = document.getElementById('note-processed-count');
+                const synchronizedEl = document.getElementById('note-synchronized-count');
+                
+                if (pendingEl && processedEl && synchronizedEl) {
+                    // 由于实时更新比较复杂，建议直接根据当前列表重新计算统计，或者通过偏移计算
+                    // 这里我们采用简单逻辑：只处理 processed 和 synchronized 的增加
+                    if (status === 'processed') {
+                        processedEl.textContent = parseInt(processedEl.textContent) + 1;
+                        pendingEl.textContent = Math.max(0, parseInt(pendingEl.textContent) - 1);
+                    } else if (status === 'synchronized') {
+                        synchronizedEl.textContent = parseInt(synchronizedEl.textContent) + 1;
+                        processedEl.textContent = Math.max(0, parseInt(processedEl.textContent) - 1);
+                    } else if (status === 'unprocessed') {
+                        // 如果回滚到未处理，重置相关计数（这是一个简化处理）
+                        pendingEl.textContent = parseInt(pendingEl.textContent) + 1;
+                    }
+                }
+            }
+        }
+
+        window.toggleNoteAgentImport = function() {
+            const isChecked = document.getElementById('note-agent-import-switch').checked;
+            
+            fetch('/api/note/agent-import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: isChecked })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog('info', isChecked ? '笔记 Agent 自动导入已开启' : '笔记 Agent 自动导入已停止');
+                    // 保存开关状态
+                    fetch('/api/note/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ agent_import_active: isChecked })
+                    });
+                } else {
+                    alert('操作失败: ' + data.error);
+                    document.getElementById('note-agent-import-switch').checked = !isChecked;
+                }
+            });
+        };
+
+        window.toggleBrainSync = function() {
+            const isChecked = document.getElementById('brain-sync-switch').checked;
+            
+            fetch('/api/note/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ brain_sync_active: isChecked })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog('info', isChecked ? '大脑后台同步已开启' : '大脑后台同步已停止');
+                } else {
+                    alert('操作失败: ' + data.error);
+                    document.getElementById('brain-sync-switch').checked = !isChecked;
+                }
+            });
+        };
+
+        // 移除旧的 triggerBrainSync 函数
+
         // 初始化邮件模态框
         function initEmailModal() {
             emailModal = document.getElementById('email-modal');
@@ -4467,16 +6026,11 @@ contentHtml + '\n' +
             emailTotal = document.getElementById('email-total');
             emailPapersTotal = document.getElementById('email-papers-total');
             
-            const emailBtn = document.getElementById('email-btn');
             const paginationPrev = document.getElementById('pagination-prev');
             const paginationNext = document.getElementById('pagination-next');
+            const agentImportSwitch = document.getElementById('agent-import-switch');
             
-            if (emailBtn) {
-                emailBtn.addEventListener('click', () => {
-                    loadEmailInfo();
-                    emailModal.classList.add('active');
-                });
-            }
+            // email-btn的点击事件已在openEmailModal函数中处理（通过onclick属性）
             
             if (emailClose) {
                 emailClose.addEventListener('click', () => {
@@ -4500,8 +6054,57 @@ contentHtml + '\n' +
                 });
             }
             
+            // Agent导入开关
+            if (agentImportSwitch) {
+                // 加载开关状态
+                fetch('/api/email/agent-import-status')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success !== undefined) {
+                            agentImportSwitch.checked = data.enabled || false;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('加载Agent导入状态失败:', error);
+                    });
+                
+                agentImportSwitch.addEventListener('change', function() {
+                    const enabled = this.checked;
+                    fetch('/api/email/agent-import-status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ enabled: enabled })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            addLog(enabled ? 'info' : 'info', enabled ? 'Agent导入已开启' : 'Agent导入已关闭');
+                            // 如果开启，刷新待处理文章列表
+                            if (enabled) {
+                                loadPendingPapers();
+                            }
+                        } else {
+                            addLog('error', '更新Agent导入状态失败: ' + (data.error || '未知错误'));
+                            // 恢复开关状态
+                            this.checked = !enabled;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('更新Agent导入状态失败:', error);
+                        addLog('error', '更新Agent导入状态失败: ' + error.message);
+                        // 恢复开关状态
+                        this.checked = !enabled;
+                    });
+                });
+            }
+            
             // 初始化邮箱设置模态框
             initEmailSettingsModal();
+            
+            // 初始化待处理文章列表
+            initPaperProcessingList();
         }
 
         // 初始化邮箱设置模态框
@@ -4691,6 +6294,340 @@ contentHtml + '\n' +
             });
         }
 
+        // 待处理文章列表相关代码
+        let paperProcessingList;
+        let pendingPapers = [];  // 存储待处理文章列表
+        let processingPapers = new Set();  // 正在处理的文章ID集合
+        
+        function initPaperProcessingList() {
+            paperProcessingList = document.getElementById('paper-processing-list');
+            
+            // 初始化标签切换功能
+            initTaskQueueTabs();
+            
+            // 监听研究方向关键词变化，同步到后端
+            const keywordsInput = document.getElementById('keywords');
+            if (keywordsInput) {
+                // 页面加载时同步一次
+                syncResearchKeywords();
+                
+                // 监听输入变化（使用防抖，避免频繁请求）
+                let keywordsTimeout;
+                keywordsInput.addEventListener('input', function() {
+                    clearTimeout(keywordsTimeout);
+                    keywordsTimeout = setTimeout(() => {
+                        syncResearchKeywords();
+                    }, 1000);  // 1秒后同步
+                });
+            }
+            
+            // 定期刷新待处理文章列表
+            loadPendingPapers();
+            setInterval(loadPendingPapers, 5000);  // 每5秒刷新一次
+        }
+
+        // 初始化任务队列标签切换
+        function initTaskQueueTabs() {
+            const tabFiles = document.getElementById('tab-files');
+            const tabPapers = document.getElementById('tab-papers');
+            const panelFiles = document.getElementById('panel-files');
+            const panelPapers = document.getElementById('panel-papers');
+            const clearBtn = document.getElementById('clear-files-btn');
+            
+            if (!tabFiles || !tabPapers || !panelFiles || !panelPapers) return;
+            
+            // 文件标签点击
+            tabFiles.addEventListener('click', () => {
+                switchTaskTab('files');
+            });
+            
+            // 文章标签点击
+            tabPapers.addEventListener('click', () => {
+                switchTaskTab('papers');
+            });
+        }
+
+        // 切换任务队列标签
+        function switchTaskTab(tabName) {
+            const tabFiles = document.getElementById('tab-files');
+            const tabPapers = document.getElementById('tab-papers');
+            const panelFiles = document.getElementById('panel-files');
+            const panelPapers = document.getElementById('panel-papers');
+            const clearBtn = document.getElementById('clear-files-btn');
+            
+            if (!tabFiles || !tabPapers || !panelFiles || !panelPapers) return;
+            
+            if (tabName === 'files') {
+                tabFiles.classList.add('active');
+                tabPapers.classList.remove('active');
+                panelFiles.classList.add('active');
+                panelPapers.classList.remove('active');
+                if (clearBtn) {
+                    clearBtn.style.display = fileStatusMap.size > 0 ? 'block' : 'none';
+                }
+            } else if (tabName === 'papers') {
+                tabFiles.classList.remove('active');
+                tabPapers.classList.add('active');
+                panelFiles.classList.remove('active');
+                panelPapers.classList.add('active');
+                if (clearBtn) {
+                    clearBtn.style.display = 'none';
+                }
+            }
+        }
+        
+        function syncResearchKeywords() {
+            const keywordsInput = document.getElementById('keywords');
+            if (!keywordsInput) return;
+            
+            const keywords = keywordsInput.value.trim();
+            if (keywords) {
+                fetch('/api/settings/research-keywords', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        keywords: keywords
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('研究方向关键词已同步到后端');
+                    }
+                })
+                .catch(error => {
+                    console.error('同步研究方向关键词失败:', error);
+                });
+            }
+        }
+        
+        function loadPendingPapers() {
+            fetch('/api/email/pending-papers')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const newPapers = data.papers || [];
+                        // 过滤掉正在处理的文章，避免重新添加
+                        const filteredPapers = newPapers.filter(paper => !processingPapers.has(paper.paper_id));
+                        
+                        // 获取当前列表中的文章ID集合
+                        const currentPaperIds = new Set(pendingPapers.map(p => p.paper_id));
+                        
+                        // 找出需要移除的文章（在当前列表中但不在新列表中，说明已处理）
+                        const removedPapers = pendingPapers.filter(p => {
+                            return !filteredPapers.find(np => np.paper_id === p.paper_id) && 
+                                   !processingPapers.has(p.paper_id);
+                        });
+                        
+                        // 如果有文章被移除（状态变为已处理），记录日志
+                        if (removedPapers.length > 0) {
+                            removedPapers.forEach(paper => {
+                                addLog('success', `文章 "${paper.title_en || paper.title || '未知'}" 已处理完成`);
+                            });
+                        }
+                        
+                        // 合并现有列表和新的列表，去重
+                        const existingIds = new Set(pendingPapers.map(p => p.paper_id));
+                        const newPapersToAdd = filteredPapers.filter(p => !existingIds.has(p.paper_id));
+                        
+                        // 更新列表：保留仍在处理中的文章 + 新的文章
+                        pendingPapers = [
+                            ...pendingPapers.filter(p => processingPapers.has(p.paper_id)), // 保留正在处理的文章
+                            ...filteredPapers.filter(p => !processingPapers.has(p.paper_id)) // 添加新的或更新的文章
+                        ];
+                        
+                        renderPendingPapers();
+                    } else {
+                        console.error('获取待处理文章失败:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取待处理文章出错:', error);
+                });
+        }
+        
+        function renderPendingPapers() {
+            if (!paperProcessingList) return;
+            
+            const taskQueueSection = document.getElementById('task-queue-section');
+            
+            // 渲染列表
+            if (pendingPapers.length === 0) {
+                paperProcessingList.innerHTML = '<div class="paper-processing-empty">暂无待处理文章</div>';
+                // 如果两个列表都为空，隐藏整个区域
+                if (taskQueueSection && fileStatusMap.size === 0) {
+                    taskQueueSection.style.display = 'none';
+                }
+                return;
+            }
+
+            // 显示任务队列区域，并切换到文章标签
+            if (taskQueueSection) {
+                taskQueueSection.style.display = 'flex';
+                // 如果有新文章，切换到文章标签
+                switchTaskTab('papers');
+            }
+            
+            let html = '';
+            pendingPapers.forEach(paper => {
+                const titleEn = paper.title_en || paper.title || '未知标题';
+                const titleCn = paper.title_cn || '';
+                const titleBilingual = paper.title_bilingual || (titleCn ? `${titleEn} | ${titleCn}` : titleEn);
+                const explanation = paper.relevance_explanation || '';
+                const relevanceScore = paper.relevance_score || 0;
+                const paperId = paper.paper_id || '';
+                
+                const isProcessing = processingPapers.has(paperId);
+                
+                html += `
+                    <div class="paper-processing-item ${relevanceScore === 1 ? 'relevant' : ''}" data-paper-id="${paperId}">
+                        <div class="paper-processing-item-title">${escapeHtml(titleEn)}</div>
+                        ${titleCn ? `<div class="paper-processing-item-title-cn">${escapeHtml(titleCn)}</div>` : ''}
+                        ${explanation ? `<div class="paper-processing-item-explanation">${escapeHtml(explanation)}</div>` : ''}
+                        ${relevanceScore === 1 ? `
+                            <div class="paper-processing-item-actions">
+                                <button class="paper-action-btn interested ${isProcessing ? 'processing' : ''}" 
+                                        ${isProcessing ? 'disabled' : ''} 
+                                        onclick="handlePaperInterest('${paperId}', true)">
+                                    ${isProcessing ? '处理中…' : '感兴趣'}
+                                </button>
+                                <button class="paper-action-btn not-interested ${isProcessing ? 'disabled-gray' : ''}" 
+                                        ${isProcessing ? 'disabled' : ''} 
+                                        onclick="handlePaperInterest('${paperId}', false)">不感兴趣</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            
+            paperProcessingList.innerHTML = html;
+        }
+        
+        function handlePaperInterest(paperId, interested) {
+            // 检查是否正在处理中
+            if (processingPapers.has(paperId)) {
+                addLog('warning', '该文章正在处理中，请稍候...');
+                return;
+            }
+            
+            const paper = pendingPapers.find(p => p.paper_id === paperId);
+            if (!paper) {
+                addLog('error', '未找到文章信息');
+                return;
+            }
+            
+            // 标记为正在处理
+            processingPapers.add(paperId);
+            
+            // 获取该文章的所有按钮
+            const itemElement = document.querySelector(`[data-paper-id="${paperId}"]`);
+            if (!itemElement) {
+                processingPapers.delete(paperId);
+                return;
+            }
+            
+            const interestedBtn = itemElement.querySelector('.paper-action-btn.interested');
+            const notInterestedBtn = itemElement.querySelector('.paper-action-btn.not-interested');
+            
+        if (interested) {
+            // 点击"感兴趣"时
+            if (interestedBtn) {
+                interestedBtn.disabled = true;
+                interestedBtn.classList.add('processing');
+                interestedBtn.setAttribute('data-original-text', '感兴趣');
+                interestedBtn.textContent = '处理中…';
+            }
+            if (notInterestedBtn) {
+                notInterestedBtn.disabled = true;
+                notInterestedBtn.classList.add('disabled-gray'); // 另一个按钮变灰
+            }
+        } else {
+            // 点击"不感兴趣"时
+            if (notInterestedBtn) {
+                notInterestedBtn.disabled = true;
+                notInterestedBtn.classList.add('processing');
+                notInterestedBtn.setAttribute('data-original-text', '不感兴趣');
+                notInterestedBtn.textContent = '处理中…';
+            }
+            if (interestedBtn) {
+                interestedBtn.disabled = true;
+                interestedBtn.classList.add('disabled-gray'); // 另一个按钮变灰
+            }
+        }
+            
+            // 发送请求，但不等待响应，让后端异步处理
+            fetch('/api/email/handle-paper-interest', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    paper_id: paperId,
+                    interested: interested
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('收到后端响应:', data);
+                if (data.success) {
+                    addLog('success', interested ? '文章处理成功并已入库' : '已标记为不感兴趣');
+                    // 立即从前端列表中物理移除，确保 UI 及时反馈
+                    pendingPapers = pendingPapers.filter(p => p.paper_id !== paperId);
+                    // 从处理中集合移除
+                    processingPapers.delete(paperId);
+                    // 重新渲染列表
+                    renderPendingPapers();
+                } else {
+                    addLog('error', '处理失败: ' + (data.error || '未知错误'));
+                    // 恢复按钮状态
+                    if (interestedBtn) {
+                        interestedBtn.disabled = false;
+                        interestedBtn.classList.remove('processing');
+                        interestedBtn.textContent = interestedBtn.getAttribute('data-original-text') || '感兴趣';
+                    }
+                    if (notInterestedBtn) {
+                        notInterestedBtn.disabled = false;
+                        notInterestedBtn.classList.remove('processing', 'disabled-gray');
+                        notInterestedBtn.textContent = '不感兴趣';
+                    }
+                    // 从处理中集合移除，允许重试
+                    processingPapers.delete(paperId);
+                }
+            })
+            .catch(error => {
+                console.error('处理文章兴趣失败:', error);
+                addLog('error', '提交处理请求失败: ' + error.message);
+                
+                // 恢复按钮状态
+                if (interestedBtn) {
+                    interestedBtn.disabled = false;
+                    interestedBtn.classList.remove('processing');
+                    interestedBtn.textContent = interestedBtn.getAttribute('data-original-text') || '感兴趣';
+                }
+                if (notInterestedBtn) {
+                    notInterestedBtn.disabled = false;
+                    notInterestedBtn.classList.remove('processing', 'disabled-gray');
+                    notInterestedBtn.textContent = '不感兴趣';
+                }
+                
+                // 从处理中集合移除，允许重试
+                processingPapers.delete(paperId);
+            });
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
         // 页面加载完成后初始化
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initEmailModal);
@@ -4698,7 +6635,7 @@ contentHtml + '\n' +
             initEmailModal();
         }
 
-        // 打开数据库管理页面（新窗口）
+        // 打开数据库系统页面（新窗口）
         window.openDatabasePage = function() {
             const windowWidth = 1400;
             const windowHeight = 900;
@@ -4718,134 +6655,31 @@ contentHtml + '\n' +
             }
         };
         
-        // Tag设置模态框
-        let tagSettingsModal, tagSettingsClose;
-        
-        window.openTagSettingsModal = function() {
-            if (!tagSettingsModal) {
-                initTagSettingsModal();
+        // 打开邮箱系统
+        window.openEmailModal = function() {
+            // 确保邮箱模态框已初始化
+            if (!emailModal) {
+                initEmailModal();
             }
-            if (tagSettingsModal) {
-                loadTagSettings();
-                tagSettingsModal.classList.add('active');
+            if (emailModal) {
+                loadEmailInfo();
+                emailModal.classList.add('active');
+            } else {
+                addLog('error', '无法打开邮箱系统，请刷新页面重试');
             }
         };
         
-        function initTagSettingsModal() {
-            tagSettingsModal = document.getElementById('tag-settings-modal');
-            tagSettingsClose = document.getElementById('tag-settings-close');
-            
-            if (tagSettingsClose) {
-                tagSettingsClose.addEventListener('click', closeTagSettingsModal);
-            }
-            
-            if (tagSettingsModal) {
-                tagSettingsModal.addEventListener('click', (e) => {
-                    if (e.target === tagSettingsModal) {
-                        closeTagSettingsModal();
-                    }
-                });
-            }
-            
-            // 监听tag模式切换
-            const tagModeDefault = document.getElementById('tag-mode-default');
-            const tagModeCustom = document.getElementById('tag-mode-custom');
-            const customTagContainer = document.getElementById('custom-tag-container');
-            
-            if (tagModeDefault) {
-                tagModeDefault.addEventListener('change', function() {
-                    if (this.checked && customTagContainer) {
-                        customTagContainer.style.display = 'none';
-                    }
-                });
-            }
-            
-            if (tagModeCustom) {
-                tagModeCustom.addEventListener('change', function() {
-                    if (this.checked && customTagContainer) {
-                        customTagContainer.style.display = 'block';
-                    }
-                });
-            }
-        }
-        
-        function closeTagSettingsModal() {
-            if (tagSettingsModal) {
-                tagSettingsModal.classList.remove('active');
-            }
-        }
-        
-        function loadTagSettings() {
-            fetch('/api/settings/tag')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const tagMode = data.tag_mode || 'default';
-                        const customTag = data.custom_tag || '';
-                        
-                        const tagModeDefault = document.getElementById('tag-mode-default');
-                        const tagModeCustom = document.getElementById('tag-mode-custom');
-                        const customTagInput = document.getElementById('custom-tag-input');
-                        const customTagContainer = document.getElementById('custom-tag-container');
-                        
-                        if (tagMode === 'custom') {
-                            if (tagModeCustom) tagModeCustom.checked = true;
-                            if (customTagContainer) customTagContainer.style.display = 'block';
-                            if (customTagInput) customTagInput.value = customTag;
-                        } else {
-                            if (tagModeDefault) tagModeDefault.checked = true;
-                            if (customTagContainer) customTagContainer.style.display = 'none';
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('加载tag设置失败:', error);
-                });
-        }
-        
-        function saveTagSettings() {
-            const tagModeDefault = document.getElementById('tag-mode-default');
-            const tagModeCustom = document.getElementById('tag-mode-custom');
-            const customTagInput = document.getElementById('custom-tag-input');
-            
-            const tagMode = tagModeCustom && tagModeCustom.checked ? 'custom' : 'default';
-            const customTag = tagMode === 'custom' && customTagInput ? customTagInput.value.trim() : '';
-            
-            if (tagMode === 'custom' && !customTag) {
-                alert('请输入自定义tag标签');
-                return;
-            }
-            
-            fetch('/api/settings/tag', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    tag_mode: tagMode,
-                    custom_tag: customTag
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('设置已保存');
-                    closeTagSettingsModal();
-                } else {
-                    alert('保存失败: ' + (data.error || '未知错误'));
-                }
-            })
-            .catch(error => {
-                console.error('保存tag设置失败:', error);
-                alert('保存失败: ' + error.message);
-            });
-        }
-        
-        // 初始化tag设置模态框
+        // 页面加载完成后初始化邮箱模态框
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initTagSettingsModal);
+            document.addEventListener('DOMContentLoaded', function() {
+                if (!emailModal) {
+                    initEmailModal();
+                }
+            });
         } else {
-            initTagSettingsModal();
+            if (!emailModal) {
+                initEmailModal();
+            }
         }
     </script>
 </body>

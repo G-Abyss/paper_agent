@@ -47,6 +47,11 @@ reports/
 
 # 日志文件
 *.log
+logs/
+debug/
+debug_emails/
+crewai_logs/
+uploads/
 
 # 操作系统
 .DS_Store
@@ -54,6 +59,7 @@ Thumbs.db
 
 # 配置文件
 model_config.json
+external_services.json
 
 # 本地邮件数据
 data/emails.json

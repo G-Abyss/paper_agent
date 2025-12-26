@@ -13,7 +13,7 @@
 """
 
 from crewai import Agent, Task
-from config import llm
+from agents.base import get_llm
 from typing import Optional
 from agents.base import (
     rag_paper_query_tool,
@@ -64,7 +64,7 @@ def create_knowledge_base_agent():
         ),
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=8,  # 允许更多迭代，以便使用多个工具
         max_execution_time=600,
         tools=[

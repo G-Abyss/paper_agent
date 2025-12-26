@@ -118,7 +118,7 @@ BACKUP_DIR = os.getenv('BACKUP_DIR', '')  # 默认为空，不进行备份
 
 # 调试模式配置
 DEBUG_MODE = os.getenv('DEBUG_MODE', '0') == '1'  # 从环境变量读取，默认为False
-DEBUG_DIR = 'debug'  # 调试文件输出目录
+DEBUG_DIR = 'logs/debug'  # 调试文件输出目录
 
 # 本地处理模式配置
 LOCAL_MODE = os.getenv('LOCAL', '0') == '1'  # 从环境变量读取，默认为False

@@ -5,7 +5,7 @@
 """
 
 from crewai import Agent, Task
-from config import llm
+from agents.base import get_llm
 
 
 def create_relevance_analyzer_agent(expanded_keywords=None):
@@ -39,7 +39,7 @@ def create_relevance_analyzer_agent(expanded_keywords=None):
         backstory=backstory,
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=2,
         max_execution_time=300
     )

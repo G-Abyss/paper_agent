@@ -5,7 +5,7 @@ PDF论文分析Agent - 使用RAG技术分析论文PDF
 """
 
 from crewai import Agent, Task
-from config import llm
+from agents.base import get_llm
 from agents.base import (
     rag_paper_query_tool,
     get_paper_list_tool,
@@ -41,7 +41,7 @@ def create_pdf_analysis_agent():
         ),
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=5,
         max_execution_time=600,
         tools=[

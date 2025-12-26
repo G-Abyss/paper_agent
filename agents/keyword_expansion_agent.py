@@ -5,7 +5,7 @@
 """
 
 from crewai import Agent, Task, Crew
-from config import llm
+from agents.base import get_llm
 from callbacks.crewai_callbacks import capture_crewai_output
 from callbacks.frontend_callbacks import send_agent_status
 
@@ -18,7 +18,7 @@ def create_keyword_expansion_agent():
         backstory="你是一位在学术研究领域拥有深厚经验的专家，擅长理解和扩写研究方向关键词。你能够根据简短的关键词，深入分析其学术含义，识别相关的技术领域、研究方法、应用场景，并生成结构化的研究方向描述。你的扩写结果将用于指导论文相关性分析，因此需要准确、全面、专业。",
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=3,
         max_execution_time=300
     )

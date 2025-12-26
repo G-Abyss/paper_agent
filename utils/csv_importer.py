@@ -206,6 +206,12 @@ def import_csv_to_database(csv_path: str) -> Dict:
                                     update_fields.append("abstract = %s")
                                     update_values.append(abstract)
                             
+                            # 检查并更新url（只覆盖空缺的）
+                            if not existing.get('url'):
+                                if link:  # 导入数据不为空才覆盖
+                                    update_fields.append("url = %s")
+                                    update_values.append(link)
+                            
                             # 检查并更新keywords（只覆盖空缺的）
                             existing_keywords = existing.get('keywords', [])
                             if not existing_keywords or (isinstance(existing_keywords, list) and len(existing_keywords) == 0):
@@ -253,6 +259,11 @@ def import_csv_to_database(csv_path: str) -> Dict:
                                 update_fields.append("abstract = %s")
                                 update_values.append(abstract)
                             
+                            # 更新url（只覆盖导入数据中不为空的数据）
+                            if link:
+                                update_fields.append("url = %s")
+                                update_values.append(link)
+                            
                             # 更新keywords（只覆盖导入数据中不为空的数据）
                             if keywords:
                                 update_fields.append("keywords = %s")
@@ -282,12 +293,13 @@ def import_csv_to_database(csv_path: str) -> Dict:
                     else:
                         # 没有重名，正常导入
                         cur.execute("""
-                            INSERT INTO papers (paper_id, title, abstract, keywords, authors, source, metadata)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO papers (paper_id, title, abstract, url, keywords, authors, source, metadata)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
                             paper_id,
                             title,
                             abstract or '',
+                            link or '',
                             keywords or [],
                             authors or [],
                             'csv_import',

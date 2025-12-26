@@ -188,7 +188,8 @@ def get_db_connection():
             _db_pool = ThreadedConnectionPool(
                 minconn=1,
                 maxconn=10,
-                dsn=DB_URL
+                dsn=DB_URL,
+                client_encoding='utf8'
             )
             logging.info("已创建PostgreSQL连接池")
         except Exception as e:
@@ -215,6 +216,16 @@ def init_database():
                 with open(sql_file, 'r', encoding='utf-8') as f:
                     sql = f.read()
                 
+                # --- 修复视图冲突：先删除可能存在冲突的视图 ---
+                try:
+                    cur.execute("DROP VIEW IF EXISTS paper_details CASCADE;")
+                    cur.execute("DROP VIEW IF EXISTS paper_stats CASCADE;")
+                    conn.commit()
+                except Exception as e:
+                    logging.warning(f"删除旧视图失败 (可能不存在): {e}")
+                    conn.rollback()
+                # ------------------------------------------
+
                 # 移除注释行（以--开头的行）
                 lines = []
                 for line in sql.split('\n'):
@@ -296,6 +307,18 @@ def init_database():
                             # 其他错误继续抛出
                             raise
                 
+                # 检查并添加 content 列（如果不存在）
+                try:
+                    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='papers' AND column_name='content';")
+                    if not cur.fetchone():
+                        logging.info("正在为 papers 表添加 content 列...")
+                        cur.execute("ALTER TABLE papers ADD COLUMN content TEXT;")
+                        conn.commit()
+                        logging.info("已成功添加 content 列")
+                except Exception as e:
+                    logging.warning(f"检查或添加 content 列失败: {str(e)}")
+                    conn.rollback()
+
                 conn.commit()
                 logging.info("数据库初始化成功")
             else:
@@ -1056,7 +1079,7 @@ def store_pdf_to_vector_db(pdf_path: str, paper_title: Optional[str] = None, met
         logging.error(f"详细堆栈:\n{error_details}")
         return False
 
-def search_similar_chunks(query: str, n_results: int = 5, paper_id: Optional[str] = None) -> List[Dict]:
+def search_similar_chunks(query: str, n_results: int = 5, paper_id: Optional[str] = None, source: Optional[str] = None) -> List[Dict]:
     """
     在向量数据库中搜索相似的文本块
     
@@ -1064,6 +1087,7 @@ def search_similar_chunks(query: str, n_results: int = 5, paper_id: Optional[str
         query: 查询文本
         n_results: 返回结果数量
         paper_id: 可选的论文ID，用于限制搜索范围
+        source: 可选的来源过滤，例如 'note' 表示只搜索笔记，'!note' 表示排除笔记
     
     Returns:
         相似文本块列表，每个包含：content, metadata, distance
@@ -1079,39 +1103,38 @@ def search_similar_chunks(query: str, n_results: int = 5, paper_id: Optional[str
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
             # 构建SQL查询
+            where_conditions = []
+            params = [query_embedding.tolist()]
+            
             if paper_id:
-                # 限制在特定论文中搜索
-                sql = """
-                    SELECT 
-                        pc.chunk_text as content,
-                        pc.chunk_index,
-                        pc.paper_id,
-                        p.title as paper_title,
-                        p.attachment_path as paper_path,
-                        1 - (pc.embedding <=> %s::vector) as distance
-                    FROM paper_chunks pc
-                    JOIN papers p ON pc.paper_id = p.paper_id
-                    WHERE pc.paper_id = %s
-                    ORDER BY pc.embedding <=> %s::vector
-                    LIMIT %s
-                """
-                cur.execute(sql, (query_embedding.tolist(), paper_id, query_embedding.tolist(), n_results))
-            else:
-                # 在所有论文中搜索
-                sql = """
-                    SELECT 
-                        pc.chunk_text as content,
-                        pc.chunk_index,
-                        pc.paper_id,
-                        p.title as paper_title,
-                        p.attachment_path as paper_path,
-                        1 - (pc.embedding <=> %s::vector) as distance
-                    FROM paper_chunks pc
-                    JOIN papers p ON pc.paper_id = p.paper_id
-                    ORDER BY pc.embedding <=> %s::vector
-                    LIMIT %s
-                """
-                cur.execute(sql, (query_embedding.tolist(), query_embedding.tolist(), n_results))
+                where_conditions.append("pc.paper_id = %s")
+                params.append(paper_id)
+            
+            # 处理source过滤
+            if source == 'note':
+                where_conditions.append("p.source = 'note'")
+            elif source == '!note':
+                where_conditions.append("p.source != 'note'")
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            
+            sql = f"""
+                SELECT 
+                    pc.chunk_text as content,
+                    pc.chunk_index,
+                    pc.paper_id,
+                    p.title as paper_title,
+                    p.attachment_path as paper_path,
+                    p.source,
+                    1 - (pc.embedding <=> %s::vector) as distance
+                FROM paper_chunks pc
+                JOIN papers p ON pc.paper_id = p.paper_id
+                {where_clause}
+                ORDER BY pc.embedding <=> %s::vector
+                LIMIT %s
+            """
+            params.extend([query_embedding.tolist(), n_results])
+            cur.execute(sql, params)
             
             results = cur.fetchall()
             
@@ -1124,7 +1147,8 @@ def search_similar_chunks(query: str, n_results: int = 5, paper_id: Optional[str
                         'paper_id': row['paper_id'],
                         'paper_title': row['paper_title'],
                         'paper_path': row['paper_path'],
-                        'chunk_index': row['chunk_index']
+                        'chunk_index': row['chunk_index'],
+                        'source': row.get('source', 'unknown')
                     },
                     'distance': float(row['distance'])
                 }
@@ -1165,10 +1189,13 @@ def get_paper_list() -> List[Dict]:
                     title as paper_title,
                     authors,
                     abstract,
+                    content,
                     keywords,
                     source,
                     attachment_path as paper_path,
                     metadata,
+                    think_points,
+                    contextual_summary,
                     created_at,
                     updated_at
                 FROM papers
@@ -1195,10 +1222,13 @@ def get_paper_list() -> List[Dict]:
                     'title': row['paper_title'] or '未知标题',
                     'authors': ', '.join(row['authors']) if isinstance(row.get('authors'), list) else (row.get('authors') or ''),
                     'abstract': row.get('abstract') or metadata.get('abstract', ''),
+                    'content': row.get('content') or '',
                     'keywords': ', '.join(row['keywords']) if isinstance(row.get('keywords'), list) else (row.get('keywords') or ''),
                     'source': row.get('source') or '未知来源',
                     'paper_path': row['paper_path'] or '',
                     'metadata': metadata,
+                    'think_points': row.get('think_points'),
+                    'contextual_summary': row.get('contextual_summary') or '',
                     'created_at': str(row['created_at']) if row.get('created_at') else '',
                     'updated_at': str(row['updated_at']) if row.get('updated_at') else ''
                 })

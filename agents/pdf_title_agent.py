@@ -5,7 +5,7 @@ PDF标题提取Agent - 从PDF前几页提取论文标题
 """
 
 from crewai import Agent, Task
-from config import llm
+from agents.base import get_llm
 
 
 def create_pdf_title_extractor_agent():
@@ -16,7 +16,7 @@ def create_pdf_title_extractor_agent():
         backstory="你是一位专业的学术论文标题识别专家。你擅长从PDF文档的前几页中识别论文标题。你了解学术论文的常见格式：标题通常出现在第一页的顶部，可能是加粗、大字体或特殊格式。你能够识别各种格式的标题标记，如'Title:'、'题目：'、'论文标题：'等，也能识别没有明确标记但格式明显的标题。你只提取标题文本，不添加任何额外内容。",
         allow_delegation=False,
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         max_iter=3,
         max_execution_time=60
     )

@@ -108,6 +108,16 @@ def parse_email_message(msg: Message, email_id: str, papers: List[Dict]) -> Dict
     Returns:
         dict: 邮件信息字典
     """
+    # 为每个paper添加处理状态（初始为待处理）
+    for paper in papers:
+        if 'processing_status' not in paper:
+            paper['processing_status'] = 'pending'  # pending: 待处理, processing: 处理中, processed: 已处理
+        if 'paper_id' not in paper:
+            # 生成唯一ID：email_id + title的hash
+            import hashlib
+            title = paper.get('title', '')
+            paper_id_str = f"{email_id}_{title}"
+            paper['paper_id'] = hashlib.md5(paper_id_str.encode('utf-8')).hexdigest()[:16]
     # 获取邮件日期（转换为北京时间）
     date_str = msg.get('Date', '')
     email_date = None
@@ -167,26 +177,74 @@ def update_email_storage(email_list: List[Dict]):
     # 加载现有邮件
     existing_data = load_emails()
     
-    # 创建邮件ID到邮件的映射（用于去重）
-    existing_email_ids = {email['id'] for email in existing_data.get('emails', [])}
+    # 创建现有paper_id到处理状态的映射（用于保留处理状态）
+    existing_paper_status_map = {}
+    for email in existing_data.get('emails', []):
+        for paper in email.get('papers', []):
+            paper_id = paper.get('paper_id')
+            if paper_id:
+                existing_paper_status_map[paper_id] = paper.get('processing_status', 'pending')
+    
+    # 创建邮件ID到邮件的映射（用于去重和更新）
+    existing_email_map = {email['id']: email for email in existing_data.get('emails', [])}
     
     # 解析新邮件
     new_emails = []
+    updated_emails = []
     for email_info in email_list:
         email_id = email_info.get('email_id', '')
-        if email_id in existing_email_ids:
-            # 如果邮件已存在，跳过（或者可以选择更新）
-            continue
-        
         msg = email_info.get('msg')
         papers = email_info.get('papers', [])
         
-        if msg:
+        if not msg:
+            continue
+        
+        if email_id in existing_email_map:
+            # 如果邮件已存在，更新论文列表（保留已有论文的处理状态）
+            existing_email = existing_email_map[email_id]
+            existing_papers = existing_email.get('papers', [])
+            existing_paper_map = {p.get('paper_id'): p for p in existing_papers if p.get('paper_id')}
+            
+            # 合并新论文（保留已有论文的处理状态）
+            for paper in papers:
+                paper_id = paper.get('paper_id')
+                if paper_id and paper_id in existing_paper_map:
+                    # 保留已有论文的处理状态和其他信息
+                    existing_paper = existing_paper_map[paper_id]
+                    paper['processing_status'] = existing_paper.get('processing_status', 'pending')
+                    # 保留其他处理信息
+                    if 'relevance_score' in existing_paper:
+                        paper['relevance_score'] = existing_paper['relevance_score']
+                    if 'relevance_explanation' in existing_paper:
+                        paper['relevance_explanation'] = existing_paper['relevance_explanation']
+                    if 'title_cn' in existing_paper:
+                        paper['title_cn'] = existing_paper['title_cn']
+                elif paper_id and paper_id in existing_paper_status_map:
+                    # 如果paper_id存在于其他邮件中，保留其处理状态
+                    paper['processing_status'] = existing_paper_status_map[paper_id]
+            
+            # 更新邮件
             parsed_email = parse_email_message(msg, email_id, papers)
+            parsed_email['papers'] = papers  # 使用更新后的papers列表
+            updated_emails.append(parsed_email)
+        else:
+            # 新邮件
+            parsed_email = parse_email_message(msg, email_id, papers)
+            # 检查是否有已存在的paper_id，保留其处理状态
+            for paper in parsed_email.get('papers', []):
+                paper_id = paper.get('paper_id')
+                if paper_id and paper_id in existing_paper_status_map:
+                    paper['processing_status'] = existing_paper_status_map[paper_id]
             new_emails.append(parsed_email)
     
-    # 合并新旧邮件
-    all_emails = new_emails + existing_data.get('emails', [])
+    # 合并新旧邮件（更新已存在的邮件）
+    all_emails = []
+    updated_email_ids = {e['id'] for e in updated_emails}
+    for email in existing_data.get('emails', []):
+        if email['id'] not in updated_email_ids:
+            all_emails.append(email)
+    all_emails.extend(updated_emails)
+    all_emails.extend(new_emails)
     
     # 按时间降序排序（最新的在前）
     try:
@@ -364,4 +422,109 @@ def sync_remote_emails_to_local(mail, start_days: int = 30, end_days: int = 0) -
         'total_count': len(email_ids),
         'message': f'成功同步 {updated_count} 封邮件'
     }
+
+
+def get_pending_papers() -> List[Dict]:
+    """
+    获取所有待处理的文章列表
+    
+    Returns:
+        List[Dict]: 待处理文章列表，每个元素包含文章信息和所属邮件信息
+    """
+    emails_data = load_emails()
+    pending_papers = []
+    
+    for email in emails_data.get('emails', []):
+        for paper in email.get('papers', []):
+            if paper.get('processing_status', 'pending') == 'pending':
+                paper_with_email = paper.copy()
+                paper_with_email['email_id'] = email.get('id')
+                paper_with_email['email_subject'] = email.get('subject')
+                paper_with_email['email_date'] = email.get('date')
+                pending_papers.append(paper_with_email)
+    
+    return pending_papers
+
+
+def get_processing_papers() -> List[Dict]:
+    """
+    获取所有处理中的文章列表（状态为processing的文章）
+    
+    Returns:
+        List[Dict]: 处理中文章列表，每个元素包含文章信息和所属邮件信息
+    """
+    emails_data = load_emails()
+    processing_papers = []
+    
+    for email in emails_data.get('emails', []):
+        for paper in email.get('papers', []):
+            if paper.get('processing_status', 'pending') == 'processing':
+                paper_with_email = paper.copy()
+                paper_with_email['email_id'] = email.get('id')
+                paper_with_email['email_subject'] = email.get('subject')
+                paper_with_email['email_date'] = email.get('date')
+                processing_papers.append(paper_with_email)
+    
+    return processing_papers
+
+
+def update_paper_processing_status(paper_id: str, status: str, **kwargs) -> bool:
+    """
+    更新文章的处理状态
+    
+    Args:
+        paper_id: 文章ID
+        status: 处理状态 ('pending': 待处理, 'processing': 处理中, 'processed': 已处理)
+        **kwargs: 其他要更新的字段（如relevance_score, relevance_explanation, title_cn等）
+    
+    Returns:
+        bool: 是否更新成功
+    """
+    try:
+        emails_data = load_emails()
+        updated = False
+        
+        for email in emails_data.get('emails', []):
+            for paper in email.get('papers', []):
+                if paper.get('paper_id') == paper_id:
+                    paper['processing_status'] = status
+                    # 更新其他字段
+                    for key, value in kwargs.items():
+                        paper[key] = value
+                    updated = True
+                    break
+            if updated:
+                break
+        
+        if updated:
+            save_emails(emails_data)
+        
+        return updated
+    except Exception as e:
+        logging.error(f"更新文章处理状态失败: {str(e)}", exc_info=True)
+        return False
+
+
+def get_paper_by_id(paper_id: str) -> Optional[Dict]:
+    """
+    根据paper_id获取文章信息
+    
+    Args:
+        paper_id: 文章ID
+    
+    Returns:
+        Optional[Dict]: 文章信息，如果不存在则返回None
+    """
+    emails_data = load_emails()
+    
+    for email in emails_data.get('emails', []):
+        for paper in email.get('papers', []):
+            if paper.get('paper_id') == paper_id:
+                paper_with_email = paper.copy()
+                paper_with_email['email_id'] = email.get('id')
+                paper_with_email['email_subject'] = email.get('subject')
+                paper_with_email['email_date'] = email.get('date')
+                return paper_with_email
+    
+    return None
 

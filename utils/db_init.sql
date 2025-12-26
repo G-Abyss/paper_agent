@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS papers (
     source TEXT,  -- 'csv', 'email', 'pdf', 'zotero', 'obsidian'
     source_id TEXT,  -- 原始数据源ID
     attachment_path TEXT,  -- PDF文件路径
+    content TEXT, -- 笔记或文件内容
     zotero_key TEXT,  -- Zotero条目key
     obsidian_note_path TEXT,  -- Obsidian笔记路径
     metadata JSONB,  -- 灵活存储额外信息
@@ -83,9 +84,12 @@ FROM papers
 GROUP BY source;
 
 -- 创建视图：论文详细信息（包含块数量）
-CREATE OR REPLACE VIEW paper_details AS
+DROP VIEW IF EXISTS paper_details CASCADE;
+CREATE VIEW paper_details AS
 SELECT 
-    p.*,
+    p.id, p.paper_id, p.title, p.authors, p.abstract, p.content, p.year, p.journal, 
+    p.keywords, p.doi, p.url, p.source, p.source_id, p.attachment_path, 
+    p.zotero_key, p.obsidian_note_path, p.metadata, p.created_at, p.updated_at,
     COUNT(pc.id) as chunk_count,
     SUM(LENGTH(pc.chunk_text)) as total_text_length
 FROM papers p

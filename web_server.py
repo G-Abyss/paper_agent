@@ -23,6 +23,10 @@ import requests
 from utils.model_config import load_models, save_models, validate_model_config, get_active_model
 from utils.email_storage import get_email_summary, load_emails
 from utils.email_utils import connect_gmail
+from agents.data_parser_agent import parse_file_with_agent, prepare_for_delivery
+from agents.knowledge_engineer_agent import process_with_knowledge_engineer
+from utils.agent_task_queue import get_task_queue
+from utils.brain_tasks import trigger_brain_context_update, trigger_paper_depth_analysis
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'paper-summarizer-secret-key'
@@ -91,6 +95,30 @@ def emit_status(status):
         'status': status
     })
 
+def emit_queue_status():
+    """发送任务队列状态更新"""
+    try:
+        task_queue = get_task_queue()
+        # 获取活跃任务数（等待中 + 运行中）
+        active_count = 0
+        with task_queue.queue_lock:
+            for task in task_queue.tasks.values():
+                if task.status.value in ['pending', 'running']:
+                    active_count += 1
+        
+        socketio.emit('message', {
+            'type': 'queue_status',
+            'count': active_count
+        })
+    except Exception as e:
+        logging.error(f"发送队列状态失败: {str(e)}")
+
+def queue_status_monitor():
+    """后台监控队列状态的线程"""
+    while True:
+        emit_queue_status()
+        time.sleep(2)  # 每2秒刷新一次
+
 def emit_waiting_confirmation(papers_data):
     """
     发送等待人工确认消息（批量模式）
@@ -102,6 +130,62 @@ def emit_waiting_confirmation(papers_data):
         'type': 'waiting_confirmation',
         'papers': papers_data
     })
+
+# --- 笔记功能相关辅助函数 ---
+def get_root_dir():
+    """获取项目根目录绝对路径"""
+    return os.path.dirname(os.path.abspath(__file__))
+
+def get_note_settings():
+    """获取笔记设置"""
+    try:
+        settings_file = os.path.join(get_root_dir(), 'data', 'note_settings.json')
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        logging.error(f"加载笔记设置失败: {str(e)}")
+        return {}
+
+def save_note_settings(settings):
+    """保存笔记设置"""
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.join(get_root_dir(), 'data'), exist_ok=True)
+        settings_file = os.path.join(get_root_dir(), 'data', 'note_settings.json')
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logging.error(f"保存笔记设置失败: {str(e)}")
+        return False
+
+def get_note_file_status():
+    """获取笔记文件处理状态"""
+    try:
+        status_file = os.path.join(get_root_dir(), 'data', 'note_file_status.json')
+        if os.path.exists(status_file):
+            with open(status_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        logging.error(f"加载笔记文件状态失败: {str(e)}")
+        return {}
+
+def save_note_file_status(status):
+    """保存笔记文件处理状态"""
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.join(get_root_dir(), 'data'), exist_ok=True)
+        status_file = os.path.join(get_root_dir(), 'data', 'note_file_status.json')
+        with open(status_file, 'w', encoding='utf-8') as f:
+            json.dump(status, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logging.error(f"保存笔记文件状态失败: {str(e)}")
+        return False
+# -----------------------------
 
 def emit_paper_ready_for_confirmation(paper_id, paper_data):
     """
@@ -158,7 +242,7 @@ def index():
 
 @app.route('/database')
 def database_management():
-    """返回数据库管理页面"""
+    """返回数据库系统页面"""
     return send_from_directory('.', 'database_management.html')
 
 @app.route('/api/papers/list', methods=['GET'])
@@ -185,6 +269,10 @@ def get_papers_list():
                 'keywords': ', '.join(paper.get('keywords', [])) if isinstance(paper.get('keywords'), list) else (metadata.get('keywords', '') or ''),
                 'created_at': paper.get('created_at', ''),
                 'attachment_path': paper.get('paper_path', paper.get('attachment_path', '')),
+                'url': paper.get('url', metadata.get('link', '')),
+                'content': paper.get('content', ''),
+                'think_points': paper.get('think_points'),
+                'contextual_summary': paper.get('contextual_summary', ''),
                 'metadata': metadata  # 包含所有自定义字段
             })
         
@@ -657,6 +745,237 @@ def cleanup_unused_pdfs():
         return jsonify({
             'success': False,
             'error': f'清理失败: {str(e)}'
+        }), 500
+
+@app.route('/api/upload/parse', methods=['POST'])
+def upload_and_parse_file():
+    """上传文件并解析（数据社区与解析主管）"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': '未找到上传文件'
+            }), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': '未选择文件'
+            }), 400
+        
+        # 检查文件类型
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ['.csv', '.pdf']:
+            return jsonify({
+                'success': False,
+                'error': '不支持的文件类型，仅支持 CSV 和 PDF 文件'
+            }), 400
+        
+        # 保存文件到临时目录
+        upload_dir = os.path.join(os.getcwd(), 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # 生成唯一文件名（避免冲突）
+        timestamp = int(time.time() * 1000)
+        safe_filename = f"{timestamp}_{file.filename}"
+        file_path = os.path.join(upload_dir, safe_filename)
+        file.save(file_path)
+        
+        # 步骤1：使用数据摄取与解析主管Agent解析文件（通过任务队列）
+        logging.info(f"开始解析文件: {file.filename}, 路径: {file_path}")
+        
+        try:
+            # 将解析任务添加到队列
+            task_queue = get_task_queue()
+            parse_task_id = task_queue.add_task(
+                f"parse_{int(time.time() * 1000)}_{os.path.basename(file_path)}",
+                'file_parse',
+                parse_file_with_agent,
+                file_path
+            )
+            
+            # 等待任务完成（最多等待5分钟）
+            parse_task_result = task_queue.wait_for_task(parse_task_id, timeout=300)
+            
+            if not parse_task_result.get('success'):
+                error_msg = parse_task_result.get('error', '解析任务执行失败')
+                logging.error(f"文件解析任务失败: {error_msg}")
+                return jsonify({
+                    'success': False,
+                    'error': f'文件解析失败: {error_msg}'
+                }), 500
+            
+            parse_result = parse_task_result.get('result')
+            logging.info(f"解析结果: {parse_result}")
+        except Exception as e:
+            logging.error(f"解析文件时发生异常: {str(e)}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': f'文件解析异常: {str(e)}'
+            }), 500
+        
+        # 检查解析结果
+        if not parse_result:
+            return jsonify({
+                'success': False,
+                'error': '文件解析失败: 未返回结果'
+            }), 500
+        
+        # 提取解析数据 - 处理不同的返回格式
+        parse_data = None
+        source_type = 'unknown'
+        
+        # 情况1: parse_result包含parse_result字段
+        if 'parse_result' in parse_result:
+            parse_data = parse_result['parse_result']
+            if isinstance(parse_data, str):
+                try:
+                    parse_data = json.loads(parse_data)
+                except:
+                    logging.warning(f"parse_result是字符串但无法解析为JSON: {parse_data[:100]}")
+            source_type = parse_data.get('file_type', parse_result.get('file_type', 'unknown'))
+        # 情况2: parse_result直接就是解析数据
+        elif 'file_type' in parse_result:
+            parse_data = parse_result
+            source_type = parse_result.get('file_type', 'unknown')
+        # 情况3: 回退处理
+        else:
+            logging.warning(f"无法识别解析结果格式: {list(parse_result.keys())}")
+            # 尝试直接使用parse_result
+            parse_data = parse_result
+            source_type = parse_result.get('file_type', file_ext.lstrip('.'))
+        
+        # 检查是否成功
+        if not parse_result.get('success', True):
+            error_msg = parse_result.get('error', '解析失败')
+            return jsonify({
+                'success': False,
+                'error': f'文件解析失败: {error_msg}'
+            }), 500
+        
+        if not parse_data:
+            return jsonify({
+                'success': False,
+                'error': '文件解析失败: 无法提取解析数据'
+            }), 500
+        
+        logging.info(f"提取的解析数据 - 文件类型: {source_type}, 数据键: {list(parse_data.keys())}")
+        
+        # 步骤2：准备传递给知识工程师的数据
+        try:
+            if source_type == 'csv':
+                # CSV文件：传递文件路径和基本元数据
+                metadata = {
+                    'file_name': parse_data.get('file_name', os.path.basename(file_path)),
+                    'columns': parse_data.get('columns', []),
+                    'total_rows': parse_data.get('total_rows', 0),
+                    'file_type': 'csv'
+                }
+                raw_text = ''  # CSV不需要原始文本
+                logging.info(f"CSV文件准备完成: {metadata.get('total_rows', 0)} 行数据")
+            elif source_type == 'pdf':
+                # PDF文件：传递文件路径和已提取的元数据
+                metadata = parse_data.get('metadata', {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                
+                metadata['file_type'] = 'pdf'
+                metadata['page_count'] = parse_data.get('page_count', 0)
+                metadata['file_size'] = parse_data.get('file_size', 0)
+                metadata['title'] = metadata.get('title', parse_data.get('file_name', os.path.basename(file_path)))
+                raw_text = parse_data.get('raw_text', '')  # PDF的原始文本（用于后续处理）
+                logging.info(f"PDF文件准备完成: {len(raw_text)} 字符, {metadata.get('page_count', 0)} 页")
+            else:
+                logging.error(f"不支持的文件类型: {source_type}")
+                return jsonify({
+                    'success': False,
+                    'error': f'不支持的文件类型: {source_type}'
+                }), 400
+        except Exception as e:
+            logging.error(f"准备知识工程师数据时发生异常: {str(e)}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': f'准备数据失败: {str(e)}'
+            }), 500
+        
+        # 步骤3：使用知识工程师Agent处理数据（通过任务队列）
+        logging.info(f"开始知识工程处理: {file.filename} (类型: {source_type})")
+        try:
+            # 将知识工程任务添加到队列
+            task_queue = get_task_queue()
+            knowledge_task_id = task_queue.add_task(
+                f"knowledge_{int(time.time() * 1000)}_{os.path.basename(file_path)}",
+                'knowledge_engine',
+                process_with_knowledge_engineer,
+                raw_text,
+                metadata,
+                file_path,
+                source_type
+            )
+            
+            # 等待任务完成（最多等待10分钟）
+            knowledge_task_result = task_queue.wait_for_task(knowledge_task_id, timeout=600)
+            
+            if not knowledge_task_result.get('success'):
+                error_msg = knowledge_task_result.get('error', '知识工程任务执行失败')
+                logging.error(f"知识工程处理任务失败: {error_msg}")
+                return jsonify({
+                    'success': False,
+                    'error': f'知识工程处理失败: {error_msg}'
+                }), 500
+            
+            knowledge_result = knowledge_task_result.get('result')
+            logging.info(f"知识工程处理结果: success={knowledge_result.get('success', False)}, chunks={knowledge_result.get('chunks_stored', 0)}")
+        except Exception as e:
+            logging.error(f"知识工程处理时发生异常: {str(e)}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': f'知识工程处理异常: {str(e)}'
+            }), 500
+        
+        # 返回处理结果
+        if knowledge_result and knowledge_result.get('success', False):
+            # 根据文件类型生成不同的成功消息
+            if source_type == 'csv':
+                papers_count = knowledge_result.get('papers_imported', 0)
+                success_message = f'CSV文件处理成功: {file.filename}，已导入 {papers_count} 篇论文到数据库'
+            else:  # pdf
+                chunks_count = knowledge_result.get('chunks_stored', 0)
+                success_message = f'PDF文件处理成功: {file.filename}，已存储 {chunks_count} 个文本块到知识库'
+                
+                # 检查是否需要触发大脑深度分析
+                settings = get_note_settings()
+                if settings.get('brain_organizer_active', False):
+                    paper_id = knowledge_result.get('paper_id')
+                    if paper_id:
+                        task_queue.add_task(f"paper_think_{paper_id}", "paper_think", trigger_paper_depth_analysis, paper_id)
+                        emit_log('info', f'已触发论文深度分析任务: {paper_id}')
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'parse_result': parse_data,
+                    'knowledge_result': knowledge_result
+                },
+                'message': success_message
+            })
+        else:
+            error_msg = knowledge_result.get('error', '未知错误') if knowledge_result else '知识工程处理返回空结果'
+            return jsonify({
+                'success': False,
+                'error': f'知识工程处理失败: {error_msg}',
+                'data': {
+                    'parse_result': parse_data,
+                    'knowledge_result': knowledge_result
+                }
+            }), 500
+        
+    except Exception as e:
+        logging.error(f"文件上传解析失败: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'文件解析失败: {str(e)}'
         }), 500
 
 @app.route('/api/papers/upload_csv', methods=['POST'])
@@ -1406,8 +1725,16 @@ def update_emails():
         
         try:
             # 使用同步函数（不限制数量，获取所有符合条件的邮件）
-            from utils.email_storage import sync_remote_emails_to_local
+            from utils.email_storage import sync_remote_emails_to_local, get_pending_papers
             sync_result = sync_remote_emails_to_local(mail, start_days=start_days, end_days=end_days)
+            
+            # 更新邮件后，检查是否有新的待处理文章
+            # 如果有且Agent导入已开启，记录日志提示后台线程开始处理
+            if agent_import_enabled:
+                pending_papers = get_pending_papers()
+                unprocessed_count = len([p for p in pending_papers if 'relevance_score' not in p or p.get('relevance_score') is None])
+                if unprocessed_count > 0:
+                    logging.info(f"邮件更新完成，发现 {unprocessed_count} 篇待处理文章，后台Agent将开始处理...")
             
             return jsonify({
                 'success': True,
@@ -1522,6 +1849,192 @@ def test_email_connection():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Agent导入开关状态（全局变量）
+agent_import_enabled = False
+
+
+@app.route('/api/email/agent-import-status', methods=['GET'])
+def get_agent_import_status():
+    """获取Agent导入开关状态"""
+    global agent_import_enabled
+    return jsonify({'success': True, 'enabled': agent_import_enabled})
+
+
+@app.route('/api/email/agent-import-status', methods=['POST'])
+def set_agent_import_status():
+    """设置Agent导入开关状态"""
+    global agent_import_enabled
+    try:
+        data = request.get_json() or {}
+        enabled = data.get('enabled', False)
+        agent_import_enabled = enabled
+        
+        # 记录日志
+        if enabled:
+            from utils.email_storage import get_pending_papers
+            pending_papers = get_pending_papers()
+            unprocessed_count = len([p for p in pending_papers if 'relevance_score' not in p or p.get('relevance_score') is None])
+            logging.info(f"Agent导入已开启，发现 {unprocessed_count} 篇待处理文章，后台线程将开始处理...")
+        else:
+            logging.info("Agent导入已关闭")
+        
+        return jsonify({'success': True, 'enabled': agent_import_enabled})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/email/pending-papers', methods=['GET'])
+def get_pending_papers():
+    """获取所有待处理的文章列表（状态为processing的文章，等待用户选择）"""
+    try:
+        from utils.email_storage import get_processing_papers
+        processing_papers = get_processing_papers()
+        
+        # 只返回相关性为1的文章（等待用户选择）
+        relevant_papers = []
+        for paper in processing_papers:
+            # 如果文章相关性为1，则显示
+            if paper.get('relevance_score') == 1:
+                relevant_papers.append(paper)
+        
+        return jsonify({
+            'success': True,
+            'papers': relevant_papers
+        })
+    except Exception as e:
+        logging.error(f"获取待处理文章失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/email/handle-paper-interest', methods=['POST'])
+def handle_paper_interest():
+    """处理用户对文章的兴趣选择（感兴趣/不感兴趣）"""
+    try:
+        data = request.get_json() or {}
+        paper_id = data.get('paper_id', '').strip()
+        interested = data.get('interested', False)
+        
+        if not paper_id:
+            return jsonify({'success': False, 'error': '文章ID不能为空'}), 400
+        
+        from utils.email_storage import get_paper_by_id, update_paper_processing_status
+        
+        # 获取文章信息
+        paper = get_paper_by_id(paper_id)
+        if not paper:
+            return jsonify({'success': False, 'error': '未找到文章'}), 404
+        
+        if interested:
+            # 如果感兴趣，尝试提取摘要/PDF，然后存入数据库
+            paper_link = paper.get('link', '')
+            paper_title = paper.get('title_en') or paper.get('title', '')
+            paper_title_cn = paper.get('title_cn', '')
+            paper_title_bilingual = paper.get('title_bilingual', '')
+            
+            logging.info(f"开始处理感兴趣文章 {paper_id}: title={paper_title}, link={paper_link}")
+            
+            if paper_link:
+                # --- [流程简化] 暂时禁用摘要提取 Agent，直接进入知识处理流程 ---
+                logging.info(f"--- [快速入库] 已禁用摘要爬取，直接移交给知识工程师 ---")
+                
+                # 直接使用邮件中的 snippet 作为摘要
+                final_abstract = paper.get('snippet', '')
+                
+                knowledge_metadata = {
+                    'title_en': paper_title,
+                    'title_cn': paper_title_cn,
+                    'title_bilingual': paper_title_bilingual,
+                    'abstract': final_abstract,
+                    'authors': paper.get('authors', []),
+                    'journal': paper.get('journal', ''),
+                    'year': paper.get('year', ''),
+                    'link': paper_link,
+                    'source': 'email',
+                    'tag': 'email'
+                }
+
+                def knowledge_engineering_task():
+                    """知识工程师处理任务包装函数"""
+                    from agents.knowledge_engineer_agent import process_with_knowledge_engineer
+                    logging.info(f"--- [知识工程师启动] 正在处理文章快速入库: {paper_title} ---")
+                    # 使用知识工程师 Agent 处理，内部根据 source_type='email' 或 'pdf' 执行不同逻辑
+                    return process_with_knowledge_engineer(
+                        raw_text=final_abstract,
+                        metadata=knowledge_metadata,
+                        file_path=paper_link,
+                        source_type='email'
+                    )
+
+                try:
+                    # 将知识工程师任务添加到队列
+                    task_queue = get_task_queue()
+                    ke_task_id = task_queue.add_task(
+                        f"ke_{paper_id}_{int(time.time() * 1000)}",
+                        'knowledge_engine',
+                        knowledge_engineering_task
+                    )
+                    
+                    logging.info(f"知识工程师任务 {ke_task_id} 已添加到队列，开始等待完成...")
+                    # 增加等待时间到 120 秒，因为现在是真实的 Agent 在推理入库
+                    ke_result = task_queue.wait_for_task(ke_task_id, timeout=120)
+                    
+                    if ke_result.get('success'):
+                        logging.info(f"✓ 快速入库处理完成: {paper_id}")
+                        update_paper_processing_status(paper_id, 'processed')
+                        return jsonify({
+                            'success': True,
+                            'message': '文章已通过知识工程师成功处理并入库'
+                        })
+                    else:
+                        raise Exception(f"知识工程师执行失败: {ke_result.get('error')}")
+                except Exception as e:
+                    logging.error(f"快速入库执行阶段失败: {str(e)}", exc_info=True)
+                    return jsonify({'success': False, 'error': f'快速处理失败: {str(e)}'}), 500
+            
+            else:
+                # 如果没有链接，也交给知识工程师直接入库
+                logging.info(f"--- [流程流转] 无链接文章，直接提交给知识工程师 ---")
+                knowledge_metadata = {
+                    'title_en': paper_title,
+                    'title_cn': paper_title_cn,
+                    'title_bilingual': paper_title_bilingual,
+                    'abstract': paper.get('snippet', ''),
+                    'authors': paper.get('authors', []),
+                    'journal': paper.get('journal', ''),
+                    'year': paper.get('year', ''),
+                    'link': '',
+                    'source': 'email',
+                    'tag': 'email'
+                }
+                
+                # 重复调用知识工程师逻辑
+                from agents.knowledge_engineer_agent import process_with_knowledge_engineer
+                res = process_with_knowledge_engineer(
+                    raw_text=knowledge_metadata['abstract'],
+                    metadata=knowledge_metadata,
+                    file_path=f"email_{paper_id}",
+                    source_type='email'
+                )
+                
+                if res.get('success'):
+                    update_paper_processing_status(paper_id, 'processed')
+                    return jsonify({'success': True, 'message': '文章已成功入库（无链接）'})
+                else:
+                    return jsonify({'success': False, 'error': res.get('error')}), 500
+        else:
+            # 不感兴趣，直接标记为已处理
+            logging.info(f"文章 {paper_id} 标记为不感兴趣")
+            update_paper_processing_status(paper_id, 'processed')
+            return jsonify({
+                'success': True,
+                'message': '已标记为不感兴趣'
+            })
+        
+    except Exception as e:
+        logging.error(f"处理文章兴趣失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @socketio.on('connect')
 def handle_connect():
     """Socket.IO连接"""
@@ -1535,6 +2048,163 @@ def handle_connect():
 def handle_disconnect():
     """WebSocket断开"""
     pass
+
+
+# 后台处理线程
+import threading
+import time
+
+# 全局变量存储研究方向关键词
+research_keywords_global = '机器人学、控制理论、遥操作、机器人动力学、力控、机器学习'
+expanded_keywords_global = None
+
+
+def background_paper_processor():
+    """后台处理待处理文章的线程"""
+    global agent_import_enabled, research_keywords_global, expanded_keywords_global
+    
+    logging.info("后台文章处理线程已启动")
+    
+    while True:
+        try:
+            if agent_import_enabled:
+                # 获取待处理文章
+                from utils.email_storage import get_pending_papers, update_paper_processing_status
+                pending_papers = get_pending_papers()
+                
+                # 只处理还没有relevance_score的文章（未处理过的）
+                unprocessed_papers = [p for p in pending_papers if 'relevance_score' not in p or p.get('relevance_score') is None]
+                
+                if unprocessed_papers:
+                    logging.info(f"[Agent处理] 发现 {len(unprocessed_papers)} 篇待处理文章，开始处理...")
+                    # 处理第一篇文章
+                    paper = unprocessed_papers[0]
+                    paper_id = paper.get('paper_id')
+                    paper_title = paper.get('title', '')[:50]
+                    
+                    logging.info(f"开始处理文章: {paper_title}... (ID: {paper_id})")
+                    
+                    if paper_id:
+                        try:
+                            # --- 接入任务队列，防止资源竞争 ---
+                            logging.info(f"使用关键词: {research_keywords_global[:50]}...")
+                            
+                            def email_agent_task():
+                                """邮件处理 Agent 任务包装函数"""
+                                from agents.email_processing_agent import process_email_paper_with_agent
+                                return process_email_paper_with_agent(
+                                    paper=paper,
+                                    research_keywords=research_keywords_global,
+                                    expanded_keywords=expanded_keywords_global
+                                )
+
+                            # 将后台邮件分析任务添加到全局任务队列
+                            task_queue = get_task_queue()
+                            task_id = task_queue.add_task(
+                                f"email_bg_{paper_id}",
+                                'email_process',
+                                email_agent_task
+                            )
+                            
+                            # 等待分析完成（最长300秒）
+                            task_res = task_queue.wait_for_task(task_id, timeout=300)
+                            
+                            if task_res.get('success'):
+                                result = task_res.get('result')
+                                relevance_score = result.get('relevance_score', 0)
+                                
+                                # 更新文章信息
+                                # 相关性为1时标记为processing（等待用户选择），否则标记为processed
+                                update_paper_processing_status(
+                                    paper_id,
+                                    'processing' if relevance_score == 1 else 'processed',
+                                    title_en=result.get('title_en'),
+                                    title_cn=result.get('title_cn'),
+                                    title_bilingual=result.get('title_bilingual'),
+                                    relevance_score=relevance_score,
+                                    relevance_explanation=result.get('relevance_explanation', '')
+                                )
+                                
+                                logging.info(f"✓ 文章 {paper_id} 队列分析完成，相关性: {relevance_score}")
+                            else:
+                                logging.error(f"✗ 邮件文章队列分析失败: {task_res.get('error')}")
+                                # 分析失败也标记为已处理，避免重复处理
+                                update_paper_processing_status(paper_id, 'processed')
+                        except Exception as e:
+                            logging.error(f"✗ 处理文章 {paper_id} 时出错: {str(e)}", exc_info=True)
+                            # 出错也标记为已处理，避免重复处理
+                            try:
+                                update_paper_processing_status(paper_id, 'processed')
+                            except:
+                                pass
+                else:
+                    # 没有待处理文章时，每30秒记录一次日志（避免日志过多）
+                    import random
+                    if random.randint(1, 6) == 1:  # 约每30秒记录一次（5秒*6）
+                        logging.info(f"[Agent处理] 没有待处理的文章（共 {len(pending_papers)} 篇已处理），继续等待...")
+            else:
+                # Agent导入未开启时，每60秒记录一次日志
+                import random
+                if random.randint(1, 12) == 1:  # 约每60秒记录一次（5秒*12）
+                    logging.info("Agent导入未开启，等待中...")
+            
+            # 等待5秒后再次检查
+            time.sleep(5)
+            
+        except Exception as e:
+            logging.error(f"后台处理线程出错: {str(e)}", exc_info=True)
+            time.sleep(10)  # 出错后等待更长时间
+
+
+# 启动后台处理线程
+background_thread = threading.Thread(target=background_paper_processor, daemon=True)
+background_thread.start()
+logging.info("后台文章处理线程已创建并启动")
+
+
+@app.route('/api/settings/research-keywords', methods=['POST'])
+def update_research_keywords():
+    """更新研究方向关键词（用于后台处理）"""
+    global research_keywords_global, expanded_keywords_global
+    try:
+        data = request.get_json() or {}
+        keywords = data.get('keywords', '').strip()
+        expanded = data.get('expanded_keywords', None)
+        
+        if keywords:
+            research_keywords_global = keywords
+            logging.info(f"研究方向关键词已更新: {keywords[:50]}...")
+        if expanded:
+            expanded_keywords_global = expanded
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/email/processor-status', methods=['GET'])
+def get_processor_status():
+    """获取后台处理线程状态（用于调试）"""
+    global agent_import_enabled, research_keywords_global
+    try:
+        from utils.email_storage import get_pending_papers, get_processing_papers
+        
+        pending_count = len(get_pending_papers())
+        processing_count = len(get_processing_papers())
+        unprocessed_count = len([p for p in get_pending_papers() if 'relevance_score' not in p or p.get('relevance_score') is None])
+        
+        return jsonify({
+            'success': True,
+            'agent_import_enabled': agent_import_enabled,
+            'research_keywords': research_keywords_global[:50] + '...' if len(research_keywords_global) > 50 else research_keywords_global,
+            'pending_count': pending_count,
+            'processing_count': processing_count,
+            'unprocessed_count': unprocessed_count,
+            'thread_alive': background_thread.is_alive() if background_thread is not None else False
+        })
+    except Exception as e:
+        logging.error(f"获取处理线程状态失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def run_summarizer_task(config):
     """在后台线程中运行summarizer任务"""
@@ -1799,10 +2469,665 @@ def run_summarizer_task(config):
         emit_status('error')
         running_status['is_running'] = False
 
+# --- 笔记系统接口 ---
+
+@app.route('/api/utils/select-folder', methods=['GET'])
+def api_select_folder():
+    """打开原生对话框选择文件夹"""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        root = tk.Tk()
+        root.withdraw()  # 隐藏主窗口
+        root.attributes('-topmost', True)  # 确保对话框在最前面
+        
+        folder_path = filedialog.askdirectory()
+        root.destroy()
+        
+        if folder_path:
+            return jsonify({'success': True, 'path': folder_path})
+        return jsonify({'success': False, 'message': '取消选择'})
+    except Exception as e:
+        logging.error(f"打开文件夹选择对话框失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/note/settings', methods=['GET'])
+def api_get_note_settings():
+    """获取笔记设置"""
+    return jsonify(get_note_settings())
+
+@app.route('/api/note/settings', methods=['POST'])
+def api_save_note_settings():
+    """保存笔记设置（合并现有设置）"""
+    new_settings = request.json
+    current_settings = get_note_settings()
+    
+    # 合并设置
+    current_settings.update(new_settings)
+    
+    if save_note_settings(current_settings):
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': '保存设置失败'}), 500
+
+@app.route('/api/note/files', methods=['GET'])
+def api_get_note_files():
+    """扫描笔记文件夹并返回文件列表，同时监控文件变化"""
+    try:
+        settings = get_note_settings()
+        note_path = settings.get('note_path')
+        
+        if not note_path or not os.path.exists(note_path):
+            return jsonify({'success': False, 'error': '笔记路径未设置或不存在'})
+            
+        # 支持的文件类型
+        supported_exts = {'.txt', '.md', '.docx', '.doc', '.json', '.yaml', '.csv', '.xls', '.xlsx', '.pdf'}
+        
+        files_list = []
+        file_status_data = get_note_file_status() # 格式: {file_id: {"status": "...", "mtime": ...}}
+        
+        # 记录本次扫描发现的文件 ID
+        current_scan_ids = set()
+        status_changed = False
+        
+        for root, dirs, files in os.walk(note_path):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            
+            for file in files:
+                if file.startswith('.'):
+                    continue
+                    
+                file_path = os.path.join(root, file)
+                file_ext = os.path.splitext(file)[1].lower()
+                
+                if file_ext in supported_exts:
+                    # 在 Windows 上，确保文件名和路径是正确的 Unicode
+                    try:
+                        # 尝试通过系统编码纠正（针对部分旧环境乱码）
+                        if isinstance(file, bytes):
+                            file = file.decode('utf-8')
+                    except:
+                        pass
+                        
+                    rel_path = os.path.relpath(file_path, note_path)
+                    mod_time = os.path.getmtime(file_path)
+                    # 使用秒级整数进行对比，避免浮点数精度误差
+                    mod_time_int = int(mod_time)
+                    
+                    # 使用相对路径作为唯一ID
+                    file_id = rel_path.replace('\\', '/')
+                    current_scan_ids.add(file_id)
+                    
+                    # 获取旧记录
+                    old_record = file_status_data.get(file_id)
+                    
+                    if isinstance(old_record, str):
+                        # 兼容极旧版本格式 (只有字符串状态)
+                        old_record = {"status": old_record, "mtime": 0}
+                    
+                    # 检查是否发生变化
+                    if not old_record:
+                        # 只有在完全没有记录时才设为 pending
+                        file_status_data[file_id] = {"status": "pending", "mtime": mod_time_int}
+                        status_changed = True
+                    else:
+                        # 获取已有的状态和时间（兼容处理）
+                        old_mtime = old_record.get('mtime', 0)
+                        # 如果 old_mtime 是浮点数，也转为整数对比
+                        if abs(int(old_mtime) - mod_time_int) > 1:
+                            # 只有时间偏差超过1秒才认为文件已更改
+                            file_status_data[file_id]["status"] = "pending"
+                            file_status_data[file_id]["mtime"] = mod_time_int
+                            status_changed = True
+                            emit_log('info', f"检测到文件内容更新: {file}")
+                    
+                    current_record = file_status_data[file_id]
+                    
+                    files_list.append({
+                        'id': file_id,
+                        'name': file,
+                        'path': file_path,
+                        'rel_path': rel_path,
+                        'type': file_ext.replace('.', ''),
+                        'mod_time': datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S'),
+                        'status': current_record.get('status', 'pending')
+                    })
+        
+        # 清理已删除的文件记录
+        for fid in list(file_status_data.keys()):
+            if fid not in current_scan_ids:
+                del file_status_data[fid]
+                status_changed = True
+        
+        if status_changed:
+            save_note_file_status(file_status_data)
+        
+        return jsonify({
+            'success': True, 
+            'files': files_list,
+            'note_path': note_path
+        })
+    except Exception as e:
+        logging.error(f"扫描笔记文件失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# 全局变量，用于控制笔记后台处理线程
+note_feeder_thread = None
+note_feeder_stop_event = threading.Event()
+
+def start_note_feeder():
+    """启动笔记分发器线程"""
+    global note_feeder_thread
+    if note_feeder_thread is None or not note_feeder_thread.is_alive():
+        note_feeder_stop_event.clear()
+        note_feeder_thread = threading.Thread(target=note_feeder_worker, daemon=True)
+        note_feeder_thread.start()
+        logging.info("笔记分发器后台线程已启动")
+
+def note_feeder_worker():
+    """笔记分发器工作循环：按需向队列添加任务"""
+    task_queue = get_task_queue()
+    while not note_feeder_stop_event.is_set():
+        try:
+            # 1. 检查开关状态
+            settings = get_note_settings()
+            if not settings.get('agent_import_active', False):
+                # 如果开关关闭，稍微休息后继续检查（不退出线程，以便随时响应重新开启）
+                time.sleep(5)
+                continue
+
+            # 2. 检查队列中是否已经有笔记导入任务
+            # 我们通过任务ID前缀来判断，允许每种类型同时存在 2 个任务
+            active_note_tasks_count = 0
+            with task_queue.queue_lock:
+                for tid, task in task_queue.tasks.items():
+                    if tid.startswith("note_import_") and task.status.value in ["pending", "running"]:
+                        active_note_tasks_count += 1
+            
+            if active_note_tasks_count >= 2:
+                # 队列中已有 2 个任务，等待处理
+                time.sleep(5)
+                continue
+
+            # 3. 寻找一个待处理文件
+            note_path = settings.get('note_path')
+            if not note_path or not os.path.exists(note_path):
+                time.sleep(10)
+                continue
+
+            file_status_data = get_note_file_status()
+            supported_exts = {'.txt', '.md', '.docx', '.doc', '.json', '.yaml', '.csv', '.xls', '.xlsx', '.pdf'}
+            
+            target_file = None
+            # 注意：我们需要过滤掉已经在队列中的文件，避免重复添加
+            queued_file_ids = set()
+            with task_queue.queue_lock:
+                for tid in task_queue.tasks.keys():
+                    if tid.startswith("note_import_"):
+                        queued_file_ids.add(tid.replace("note_import_", ""))
+
+            for root, dirs, files in os.walk(note_path):
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for file in files:
+                    if file.startswith('.'): continue
+                    file_path = os.path.join(root, file)
+                    file_ext = os.path.splitext(file)[1].lower()
+                    if file_ext in supported_exts:
+                        rel_path = os.path.relpath(file_path, note_path)
+                        file_id = rel_path.replace('\\', '/')
+                        
+                        # 只有不在队列中 且 状态为 unprocessed 的文件才会被选中
+                        if file_id not in queued_file_ids:
+                            record = file_status_data.get(file_id)
+                            status = record.get('status') if isinstance(record, dict) else record
+                            
+                            # 自动检测文件修改：如果 mtime 变了，重置为 unprocessed
+                            file_mtime = os.path.getmtime(file_path)
+                            if isinstance(record, dict) and record.get('mtime') != file_mtime:
+                                status = 'unprocessed'
+                                record['status'] = 'unprocessed'
+                                record['mtime'] = file_mtime
+                                file_status_data[file_id] = record
+                                save_note_file_status(file_status_data)
+                                logging.info(f"检测到笔记修改，重置状态: {file_id}")
+                            
+                            if status == 'unprocessed' or status == 'pending': # 兼容旧的 pending 状态
+                                target_file = (file_id, file_path)
+                                break
+                if target_file: break
+
+            if target_file:
+                file_id, file_path = target_file
+                
+                # 定义任务逻辑（闭包）
+                def make_note_task(f_id, f_path):
+                    def note_task_logic():
+                        try:
+                            emit_log('info', f'正在解析笔记: {os.path.basename(f_path)}')
+                            parse_result = parse_file_with_agent(f_path)
+                            if not parse_result.get('success', False):
+                                raise Exception(parse_result.get('error', '解析失败'))
+                            
+                            p_res = parse_result.get('parse_result', {})
+                            if isinstance(p_res, str):
+                                try: p_res = json.loads(p_res)
+                                except: pass
+                            
+                            # 获取元数据，并确保有标题
+                            metadata = p_res.get('metadata', {})
+                            if not metadata.get('title'):
+                                # 使用文件名（去除后缀）作为标题
+                                filename = os.path.basename(f_path)
+                                metadata['title'] = os.path.splitext(filename)[0]
+                            
+                            raw_text = p_res.get('content') or p_res.get('raw_text') or ""
+                            emit_log('info', f'正在将笔记导入数据库: {metadata["title"]}')
+                            
+                            ke_result = process_with_knowledge_engineer(
+                                raw_text=raw_text,
+                                metadata=metadata,
+                                file_path=f_path,
+                                source_type='note'
+                            )
+                            
+                            if ke_result.get('success', False):
+                                # 只有成功时才更新状态为已处理
+                                current_status = get_note_file_status()
+                                current_status[f_id] = {"status": "processed", "mtime": os.path.getmtime(f_path)}
+                                save_note_file_status(current_status)
+                                emit_log('success', f'笔记处理完成: {metadata["title"]}，等待大脑同步')
+                                socketio.emit('message', {'type': 'note_file_updated', 'file_id': f_id, 'status': 'processed'})
+                            else:
+                                error_msg = ke_result.get('error', '未知错误')
+                                emit_log('error', f'笔记导入失败 ({metadata["title"]}): {error_msg}')
+                                raise Exception(f"知识工程师导入失败: {error_msg}")
+                        except Exception as e:
+                            logging.error(f"处理笔记失败: {str(e)}")
+                            emit_log('error', f"处理笔记失败 ({os.path.basename(f_path)}): {str(e)}")
+                    return note_task_logic
+
+                # 添加到队列（一次只添加一个）
+                task_queue.add_task(f"note_import_{file_id}", "note_import", make_note_task(file_id, file_path))
+                logging.info(f"笔记分发器：已将 {file_id} 添加到队列")
+            else:
+                # 没有待处理文件了，休息久一点
+                time.sleep(30)
+
+        except Exception as e:
+            logging.error(f"笔记分发器异常: {str(e)}")
+            time.sleep(10)
+
+@app.route('/api/note/agent-import', methods=['POST'])
+def api_note_agent_import():
+    """启动/停止笔记 Agent 导入任务（仅更新设置并确保分发器运行）"""
+    try:
+        data = request.json
+        is_active = data.get('active', False)
+        
+        # 更新设置以持久化开关状态
+        current_settings = get_note_settings()
+        current_settings['agent_import_active'] = is_active
+        save_note_settings(current_settings)
+        
+        if is_active:
+            start_note_feeder()
+            return jsonify({'success': True, 'message': '笔记 Agent 导入已开启（按需分发任务）'})
+        else:
+            return jsonify({'success': True, 'message': '笔记 Agent 导入已停止（剩余任务将继续执行）'})
+            
+    except Exception as e:
+        logging.error(f"操作笔记导入开关失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception as e:
+        logging.error(f"启动笔记导入失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/brain/update', methods=['POST'])
+def api_brain_update():
+    """手动触发大脑认知边界更新"""
+    try:
+        task_queue = get_task_queue()
+        task_id = task_queue.add_task(f"brain_update_{int(time.time())}", "brain_update", trigger_brain_context_update)
+        return jsonify({'success': True, 'task_id': task_id, 'message': '大脑更新任务已添加到队列'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/brain/think/<paper_id>', methods=['POST'])
+def api_brain_think(paper_id):
+    """手动触发单篇论文深度分析"""
+    try:
+        task_queue = get_task_queue()
+        task_id = task_queue.add_task(f"paper_think_{paper_id}_{int(time.time())}", "paper_think", trigger_paper_depth_analysis, paper_id)
+        return jsonify({'success': True, 'task_id': task_id, 'message': f'论文 {paper_id} 深度分析任务已添加到队列'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/brain/think_all', methods=['POST'])
+def api_brain_think_all():
+    """触发全库未分析论文的深度分析"""
+    try:
+        from utils.vector_db import get_db_connection, return_db_connection
+        conn = get_db_connection()
+        try:
+            from psycopg2.extras import RealDictCursor
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            # 查找有正文但没有 think_points 的论文
+            cur.execute("SELECT paper_id FROM papers WHERE (content IS NOT NULL AND content != '') AND (think_points IS NULL OR think_points = 'null'::jsonb)")
+            papers = cur.fetchall()
+            
+            task_queue = get_task_queue()
+            count = 0
+            for p in papers:
+                paper_id = p['paper_id']
+                task_queue.add_task(f"paper_think_{paper_id}_{int(time.time())}", "paper_think", trigger_paper_depth_analysis, paper_id)
+                count += 1
+            
+            return jsonify({'success': True, 'count': count, 'message': f'已将 {count} 篇论文的分析任务添加到队列'})
+        finally:
+            return_db_connection(conn)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def brain_analysis_loop():
+    """后台循环：当开关开启时，自动将待分析文章加入队列"""
+    while True:
+        try:
+            settings = get_note_settings()
+            # 1. 处理论文深度分析 (think 点和 summary)
+            if settings.get('brain_analysis_active', False):
+                task_queue = get_task_queue()
+                
+                # 检查当前已经在运行的分析任务数
+                running_count = 0
+                with task_queue.queue_lock:
+                    for t in task_queue.tasks.values():
+                        if t.task_type == 'paper_think' and t.status.value in ['pending', 'running']:
+                            running_count += 1
+                
+                if running_count < 2:
+                    from utils.vector_db import get_db_connection, return_db_connection
+                    conn = get_db_connection()
+                    try:
+                        from psycopg2.extras import RealDictCursor
+                        cur = conn.cursor(cursor_factory=RealDictCursor)
+                        # 找一篇在 paper_chunks 中有内容但没 think 点的文章 (PDF/Email等)
+                        cur.execute("""
+                            SELECT p.paper_id FROM papers p
+                            WHERE p.source != 'note'
+                            AND (p.think_points IS NULL OR p.think_points = 'null'::jsonb OR p.think_points = '[]'::jsonb)
+                            AND EXISTS (SELECT 1 FROM paper_chunks pc WHERE pc.paper_id = p.paper_id)
+                            LIMIT 1
+                        """)
+                        paper = cur.fetchone()
+                        if paper:
+                            p_id = paper['paper_id']
+                            task_queue.add_task(f"paper_think_{p_id}", "paper_think", trigger_paper_depth_analysis, p_id)
+                    finally:
+                        return_db_connection(conn)
+
+            # 2. 处理笔记大脑同步 (已处理 -> 已同步)
+            if settings.get('brain_sync_active', False):
+                task_queue = get_task_queue()
+                
+                # 检查当前已经在运行的同步任务数
+                running_sync_count = 0
+                with task_queue.queue_lock:
+                    for t in task_queue.tasks.values():
+                        if t.task_type == 'brain_sync' and t.status.value in ['pending', 'running']:
+                            running_sync_count += 1
+                
+                if running_sync_count < 2:
+                    file_status_data = get_note_file_status()
+                    target_note_file = None
+                    
+                    # 寻找一个状态为 'processed' 的笔记进行同步
+                    for f_id, info in file_status_data.items():
+                        status = info.get('status') if isinstance(info, dict) else info
+                        if status == 'processed':
+                            # 获取对应的 paper_id 和内容
+                            from utils.vector_db import get_db_connection, return_db_connection
+                            conn = get_db_connection()
+                            try:
+                                from psycopg2.extras import RealDictCursor
+                                cur = conn.cursor(cursor_factory=RealDictCursor)
+                                # 这里的 f_id 使用正斜杠，但数据库中可能存的是反斜杠，进行兼容性匹配
+                                f_id_normalized = f_id.replace('/', '%')
+                                cur.execute("""
+                                    SELECT paper_id, content FROM papers 
+                                    WHERE REPLACE(obsidian_note_path, '\\', '/') LIKE %s 
+                                    OR REPLACE(attachment_path, '\\', '/') LIKE %s
+                                """, (f'%{f_id}%', f'%{f_id}%'))
+                                row = cur.fetchone()
+                                
+                                if not row:
+                                    # 进一步宽松匹配：只匹配文件名部分
+                                    filename_only = f_id.split('/')[-1]
+                                    cur.execute("""
+                                        SELECT paper_id, content FROM papers 
+                                        WHERE (obsidian_note_path LIKE %s OR attachment_path LIKE %s OR title LIKE %s)
+                                        AND source = 'note'
+                                    """, (f'%{filename_only}%', f'%{filename_only}%', f'%{filename_only.rsplit(".", 1)[0]}%'))
+                                    row = cur.fetchone()
+                                    if row:
+                                        logging.info(f"路径精确匹配失败，已通过文件名宽松匹配成功: {filename_only} -> {row['paper_id']}")
+
+                                if row:
+                                    p_id = row['paper_id']
+                                    content = row['content']
+                                    
+                                    # 如果内容为空，直接标记为已同步
+                                    if not content or not content.strip():
+                                        logging.info(f"笔记 {f_id} 内容为空，跳过同步过程，直接标记为‘已同步’")
+                                        current_status = get_note_file_status()
+                                        if f_id in current_status:
+                                            if isinstance(current_status[f_id], dict):
+                                                current_status[f_id]['status'] = 'synchronized'
+                                            else:
+                                                current_status[f_id] = 'synchronized'
+                                            save_note_file_status(current_status)
+                                        socketio.emit('message', {'type': 'note_file_updated', 'file_id': f_id, 'status': 'synchronized'})
+                                        continue # 继续找下一个
+                                        
+                                    target_note_file = (f_id, p_id)
+                                    break
+                            finally:
+                                return_db_connection(conn)
+                    
+                    if target_note_file:
+                        f_id, p_id = target_note_file
+                        
+                        def make_sync_task(file_id, paper_id):
+                            def sync_task_logic():
+                                try:
+                                    emit_log('info', f'正在将笔记同步至大脑: {file_id}')
+                                    res = trigger_brain_context_update(paper_id)
+                                    if res.get('success'):
+                                        # 更新状态为 synchronized
+                                        current_status = get_note_file_status()
+                                        if file_id in current_status:
+                                            if isinstance(current_status[file_id], dict):
+                                                current_status[file_id]['status'] = 'synchronized'
+                                            else:
+                                                current_status[file_id] = 'synchronized'
+                                            save_note_file_status(current_status)
+                                        emit_log('success', f'笔记同步完成: {file_id}')
+                                        socketio.emit('message', {'type': 'note_file_updated', 'file_id': file_id, 'status': 'synchronized'})
+                                        return True
+                                    else:
+                                        raise Exception(res.get('error', '同步失败'))
+                                except Exception as e:
+                                    emit_log('error', f'同步笔记 {file_id} 失败: {str(e)}')
+                                    raise e
+                            return sync_task_logic
+
+                        task_queue.add_task(f"brain_sync_{p_id}", "brain_sync", make_sync_task(f_id, p_id))
+
+        except Exception as e:
+            logging.error(f"论文分析/同步轮询异常: {e}")
+            
+        time.sleep(10) # 每10秒检查一次
+
+@app.route('/api/brain/context', methods=['GET'])
+def api_get_brain_context():
+    """获取大脑当前认知上下文"""
+    try:
+        from utils.brain_context_utils import get_brain_context
+        return jsonify(get_brain_context())
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# --------------------
+
+@app.route('/api/settings/external_services', methods=['GET'])
+def get_external_services():
+    """获取外部服务设置"""
+    try:
+        import json
+        import os
+        settings_file = os.path.join(os.getcwd(), 'external_services.json')
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+                return jsonify({'success': True, **settings})
+        return jsonify({'success': True, 'firecrawl_api_key': ''})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/settings/external_services', methods=['POST'])
+def save_external_services():
+    """保存外部服务设置"""
+    try:
+        import json
+        import os
+        data = request.json
+        settings_file = os.path.join(os.getcwd(), 'external_services.json')
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/system/open_folder', methods=['POST'])
+def open_system_folder():
+    """在文件管理器中打开并定位文件"""
+    try:
+        data = request.json
+        file_path = data.get('path', '')
+        if not file_path:
+            return jsonify({'success': False, 'error': '未提供路径'})
+            
+        import subprocess
+        import os
+        
+        # 转换路径为绝对路径
+        abs_path = os.path.abspath(file_path)
+        if not os.path.exists(abs_path):
+            return jsonify({'success': False, 'error': f'文件不存在: {abs_path}'})
+            
+        # Windows 下打开并定位文件
+        subprocess.run(['explorer', '/select,', os.path.normpath(abs_path)])
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        logging.error(f"打开文件夹失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/chat/send', methods=['POST'])
+def chat_send():
+    """发送对话消息"""
+    try:
+        data = request.json
+        message = data.get('message', '').strip()
+        mode = data.get('mode', 'query')  # 'query' 或 'explore'
+        web_search_enabled = data.get('web_search_enabled', False)
+        
+        # 探索模式下允许空消息触发自我探索
+        if not message and mode != 'explore':
+            return jsonify({'success': False, 'error': '消息不能为空'})
+        
+        from agents.chat_agent import process_chat
+        
+        result = process_chat(
+            user_message=message,
+            mode=mode,
+            web_search_enabled=web_search_enabled
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"对话处理失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/chat/history', methods=['GET'])
+def get_chat_history():
+    """获取对话历史"""
+    try:
+        from utils.chat_history import load_chat_history
+        history = load_chat_history()
+        return jsonify({'success': True, 'history': history})
+    except Exception as e:
+        logging.error(f"获取对话历史失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/chat/history', methods=['DELETE'])
+def clear_chat_history():
+    """清空对话历史"""
+    try:
+        from utils.chat_history import clear_chat_history
+        clear_chat_history()
+        return jsonify({'success': True})
+    except Exception as e:
+        logging.error(f"清空对话历史失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/content/generate', methods=['POST'])
+def generate_content_note():
+    """生成工程师：从知识点内容创建Obsidian笔记"""
+    try:
+        data = request.json
+        topic = data.get('topic', '').strip()
+        content = data.get('content', '').strip()
+        tags = data.get('tags', '').strip()
+        
+        if not topic:
+            return jsonify({'success': False, 'error': '主题不能为空'})
+        if not content:
+            return jsonify({'success': False, 'error': '内容不能为空'})
+        
+        from agents.content_generator_agent import generate_note_from_content
+        
+        result = generate_note_from_content(
+            topic=topic,
+            content=content,
+            tags=tags if tags else None
+        )
+        
+        # 如果成功创建笔记，尝试自动导入到知识库
+        if result.get('success') and result.get('file_path'):
+            try:
+                # 触发笔记导入系统重新扫描
+                # 这里可以添加自动导入逻辑，或者让用户手动触发扫描
+                logging.info(f"笔记已创建，文件路径: {result.get('file_path')}")
+            except Exception as e:
+                logging.warning(f"自动导入笔记失败（可手动触发扫描）: {e}")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"生成笔记失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     print("=" * 80)
     print("Paper Summarizer Web Server")
     print("=" * 80)
+    
+    # 启动后台处理线程（如果还未启动）
+    if background_thread is None or not background_thread.is_alive():
+        background_thread = threading.Thread(target=background_paper_processor, daemon=True)
+        background_thread.start()
+        logging.info("后台文章处理线程已创建并启动（在main中）")
     
     # 初始化数据库（确保所有表都存在）
     try:
@@ -1825,6 +3150,18 @@ if __name__ == '__main__':
         webbrowser.open('http://localhost:5000')
     
     threading.Thread(target=open_browser, daemon=True).start()
+
+    # 检查笔记导入状态，如果开启则启动分发器
+    if get_note_settings().get('agent_import_active', False):
+        start_note_feeder()
+    
+    # 启动任务队列监控线程
+    threading.Thread(target=queue_status_monitor, daemon=True).start()
+    logging.info("任务队列监控线程已启动")
+    
+    # 启动论文分析与同步轮询线程
+    threading.Thread(target=brain_analysis_loop, daemon=True).start()
+    logging.info("论文分析与同步轮询线程已启动")
     
     # 启动服务器
     socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True, use_reloader=False)

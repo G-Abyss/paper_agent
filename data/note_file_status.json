@@ -1,0 +1,190 @@
+{
+  "A2D主臂运动学模型.md": {
+    "status": "synchronized",
+    "mtime": 1744091184.426733
+  },
+  "docker.md": {
+    "status": "synchronized",
+    "mtime": 1744266526.551558
+  },
+  "ILDA从手手指运动学建模.md": {
+    "status": "synchronized",
+    "mtime": 1766392556.2229576
+  },
+  "matlab自动动力学建模优化.md": {
+    "status": "synchronized",
+    "mtime": 1744091096.434766
+  },
+  "mdh.md": {
+    "status": "synchronized",
+    "mtime": 1743218294.9879365
+  },
+  "MuJoCo.md": {
+    "status": "synchronized",
+    "mtime": 1744095134.5331352
+  },
+  "psi_16轨迹规划.md": {
+    "status": "synchronized",
+    "mtime": 1766223763.636217
+  },
+  "PSI_1运动学模型.md": {
+    "status": "synchronized",
+    "mtime": 1744091127.2445583
+  },
+  "傅里叶级数.md": {
+    "status": "synchronized",
+    "mtime": 1743217920.3999078
+  },
+  "共轭转置.md": {
+    "status": "synchronized",
+    "mtime": 1744095193.0619085
+  },
+  "关节摩擦力.md": {
+    "status": "synchronized",
+    "mtime": 1743230407.0446205
+  },
+  "利萨茹曲线.md": {
+    "status": "synchronized",
+    "mtime": 1743217920.4039092
+  },
+  "动力学方程.md": {
+    "status": "synchronized",
+    "mtime": 1744169415.2159023
+  },
+  "动力学模型建立.md": {
+    "status": "synchronized",
+    "mtime": 1744170000.2914772
+  },
+  "动力学辨识过程.md": {
+    "status": "synchronized",
+    "mtime": 1743229923.6133828
+  },
+  "动量观测器.md": {
+    "status": "synchronized",
+    "mtime": 1744178813.829989
+  },
+  "参数辨识.md": {
+    "status": "synchronized",
+    "mtime": 1744080094.7836952
+  },
+  "惯性张量.md": {
+    "status": "synchronized",
+    "mtime": 1744187038.3512905
+  },
+  "拉格朗日法.md": {
+    "status": "synchronized",
+    "mtime": 1744169462.9779851
+  },
+  "数据采集&处理.md": {
+    "status": "synchronized",
+    "mtime": 1743230210.9586582
+  },
+  "方程线性化.md": {
+    "status": "synchronized",
+    "mtime": 1743675710.4842792
+  },
+  "最小二乘法.md": {
+    "status": "synchronized",
+    "mtime": 1744169388.4550207
+  },
+  "机器人仿真.md": {
+    "status": "synchronized",
+    "mtime": 1743237131.9689364
+  },
+  "条件数.md": {
+    "status": "synchronized",
+    "mtime": 1743217920.4079084
+  },
+  "欧拉第一运动定律.md": {
+    "status": "synchronized",
+    "mtime": 1744179821.2818336
+  },
+  "欧拉第二运动定律.md": {
+    "status": "synchronized",
+    "mtime": 1744190088.0778763
+  },
+  "正规矩阵.md": {
+    "status": "synchronized",
+    "mtime": 1766223758.8827107
+  },
+  "激励轨迹设计.md": {
+    "status": "synchronized",
+    "mtime": 1766407395.1539826
+  },
+  "牛顿-欧拉法.md": {
+    "status": "synchronized",
+    "mtime": 1744514670.6942446
+  },
+  "牛顿第一定律.md": {
+    "status": "synchronized",
+    "mtime": 1744178542.1951969
+  },
+  "牛顿第二定律.md": {
+    "status": "synchronized",
+    "mtime": 1744178803.5594666
+  },
+  "自动控制算法.md": {
+    "status": "synchronized",
+    "mtime": 1766392541.098008
+  },
+  "计算力矩.md": {
+    "status": "synchronized",
+    "mtime": 1744090720.8901322
+  },
+  "轨迹规划.md": {
+    "status": "synchronized",
+    "mtime": 1766225094.7401
+  },
+  "运动学建模.md": {
+    "status": "synchronized",
+    "mtime": 1744091183.399477
+  },
+  "逆动力学.md": {
+    "status": "synchronized",
+    "mtime": 1743237250.8058302
+  },
+  "酉矩阵.md": {
+    "status": "synchronized",
+    "mtime": 1743218297.590852
+  },
+  "Clippings/Solidwork中惯性张量.md": {
+    "status": "synchronized",
+    "mtime": 1744187021.3943632
+  },
+  "Clippings/牛顿-欧拉 递推动力学方程.md": {
+    "status": "synchronized",
+    "mtime": 1744339257.1241064
+  },
+  "other/深圳宴请酒店.md": {
+    "status": "synchronized",
+    "mtime": 1743675710.4852788
+  },
+  "other/清明出行计划.md": {
+    "status": "synchronized",
+    "mtime": 1743675710.4852788
+  },
+  "other/蛋糕选择.md": {
+    "status": "synchronized",
+    "mtime": 1744094521.61183
+  },
+  "pdf/1998 - Friction Models and Friction Compensation.pdf": {
+    "status": "synchronized",
+    "mtime": 1743217920.3399076
+  },
+  "pdf/Huang 等 - 2025 - Adaptive Control Based Friction Estimation for Tracking Control of Robot Manipulators.pdf": {
+    "status": "synchronized",
+    "mtime": 1743217920.360909
+  },
+  "pdf/Huang 等 - 2025 - An Analytical Approach for Dealing With Explicit Physical Constraints in Excitation Optimization Pro.pdf": {
+    "status": "synchronized",
+    "mtime": 1743217920.3959088
+  },
+  "pdf/Integrated linkage-driven dexterous anthropomorphic robotic hand  Nature Communications.pdf": {
+    "status": "synchronized",
+    "mtime": 1743675710.47677
+  },
+  "paper_agent/通过实际运动数据和力矩信息提升动力学模型准确性的参数辨识方法.md": {
+    "status": "synchronized",
+    "mtime": 1766480769.1584208
+  }
+}

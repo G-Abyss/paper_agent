@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据库管理 - Paper Summarizer</title>
+    <title>数据库系统 - Paper Summarizer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -494,6 +494,20 @@
             margin: 0;
         }
 
+        .title-link {
+            color: var(--neon-cyan);
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .title-link:hover {
+            color: #fff;
+            text-shadow: 0 0 8px var(--neon-cyan);
+            text-decoration: underline;
+        }
+
         .table-container {
             background: var(--dark-panel);
             border: 2px solid var(--dark-border);
@@ -639,14 +653,86 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 217, 255, 0.3);
         }
+        /* Agent导入开关样式 */
+        .agent-import-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .agent-import-toggle input[type="checkbox"] {
+            width: 40px;
+            height: 20px;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .agent-import-toggle input[type="checkbox"]:checked {
+            background: rgba(0, 217, 255, 0.3);
+            border-color: var(--neon-cyan);
+        }
+
+        .agent-import-toggle input[type="checkbox"]::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            top: 1px;
+            left: 1px;
+            transition: all 0.3s;
+        }
+
+        .agent-import-toggle input[type="checkbox"]:checked::before {
+            left: 21px;
+            background: var(--neon-cyan);
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
+        }
+
+        .toggle-label {
+            font-size: 14px;
+            color: var(--neon-cyan);
+            font-weight: 600;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .btn-brain {
+            background: rgba(255, 170, 0, 0.1);
+            border-color: var(--neon-orange);
+            color: var(--neon-orange);
+        }
+
+        .btn-brain:hover {
+            background: rgba(255, 170, 0, 0.2);
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+        }
+
+        /* 统一图标样式 */
+        .status-icon {
+            font-size: 18px;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📊 数据库管理</h1>
+            <h1>📊 数据库系统</h1>
             <div class="header-actions">
                 <div id="paper-count" style="color: rgba(255, 255, 255, 0.6); margin-right: 15px;">加载中...</div>
+                <label class="agent-import-toggle" title="开启后，大脑会自动在后台分析所有未处理的论文">
+                    <input type="checkbox" id="brain-analysis-switch" onchange="toggleBrainAnalysis()">
+                    <span class="toggle-label">⚡ 论文分析</span>
+                </label>
+                <button class="btn" id="btn-refresh" onclick="loadPapersTable()" title="刷新数据库信息">🔄 刷新</button>
                 <button class="btn" id="btn-export-csv" onclick="exportToCSV()">导出CSV</button>
                 <button class="btn" id="btn-import-csv" onclick="openCSVUploadModal()">上传CSV</button>
                 <button class="btn btn-danger" id="btn-cleanup-pdfs" onclick="cleanupUnusedPDFs()">清理无用PDF</button>
@@ -735,31 +821,23 @@
 
         // 固定列定义（使用数据库字段名）
         const FIXED_COLUMNS_DEF = {
-            'title': 'title',
-            'tag': 'tag',
-            'authors': 'authors',
-            'source': 'source',
-            'abstract': 'abstract',
-            'keywords': 'keywords',
-            'attachment_path': 'attachment_path'
+            'title': '标题',
+            'source': '类型',
+            'tag': '标签',
+            'think_points': 'Think点',
+            'contextual_summary': '关联总结',
+            'abstract': '摘要',
+            'content': '正文',
+            'attachment_path': '原文路径'
         };
         
-        // 编辑模式已移除，界面仅用于数据展示
-        
-        // 固定列键名（用于内部逻辑）
-        const FIXED_COLUMNS = Object.keys(FIXED_COLUMNS_DEF);
-        
-        // 自定义列（存储在localStorage，格式：{key: '列名', display: '中文/English'})
-        let customColumns = JSON.parse(localStorage.getItem('customColumns') || '[]');
-        
-        // 当前显示的列（固定列：使用数据库字段名）
-        const FIXED_VISIBLE_COLUMNS = ['title', 'tag', 'keywords', 'authors', 'abstract', 'attachment_path'];
+        // 当前显示的列
+        const FIXED_VISIBLE_COLUMNS = ['title', 'source', 'tag', 'think_points', 'contextual_summary', 'abstract', 'content', 'attachment_path'];
         let visibleColumns = FIXED_VISIBLE_COLUMNS;
         
-        // 获取列显示名称（使用数据库字段名）
+        // 获取列显示名称
         function getColumnDisplayName(columnKey) {
-            // 直接返回字段名，不再使用中英文双语
-            return columnKey;
+            return FIXED_COLUMNS_DEF[columnKey] || columnKey;
         }
         
         // 获取列键名（从显示名称中提取）
@@ -791,7 +869,40 @@
             initColumnModal();
             initAbstractModal();
             initCSVUploadModal();
+            initBrainAnalysisSwitch();
         });
+
+        // 初始化论文分析开关状态
+        function initBrainAnalysisSwitch() {
+            fetch('/api/note/settings')
+                .then(res => res.json())
+                .then(data => {
+                    const brainSwitch = document.getElementById('brain-analysis-switch');
+                    if (brainSwitch) {
+                        brainSwitch.checked = !!data.brain_analysis_active;
+                    }
+                });
+        }
+
+        // 切换论文分析功能
+        window.toggleBrainAnalysis = function() {
+            const isChecked = document.getElementById('brain-analysis-switch').checked;
+            
+            fetch('/api/note/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ brain_analysis_active: isChecked })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    console.log(isChecked ? '论文后台分析已开启' : '论文后台分析已停止');
+                } else {
+                    alert('操作失败: ' + data.error);
+                    document.getElementById('brain-analysis-switch').checked = !isChecked;
+                }
+            });
+        };
 
         // 初始化列管理模态框
         function initColumnModal() {
@@ -1229,18 +1340,32 @@
 
         // 加载论文表格数据
         function loadPapersTable() {
+            // 显示加载状态
+            $('#loading').show();
+            $('#papers-table').hide();
+            $('#error').hide();
+            
+            // 按钮禁用，防止重复点击
+            const $refreshBtn = $('#btn-refresh');
+            const originalText = $refreshBtn.html();
+            $refreshBtn.html('🔄 刷新中...').prop('disabled', true);
+
             // 从后端获取论文列表
             fetch('/api/papers/list')
                 .then(response => response.json())
                 .then(data => {
                     $('#loading').hide();
+                    $refreshBtn.html(originalText).prop('disabled', false);
                     
                     if (data.success) {
                         papersData = data.papers || [];
                         
                         console.log('加载的论文数据:', papersData.length, '篇');
+                        console.log('数据示例:', papersData.slice(0, 3));
                         
-                        // 更新论文数量
+                        // 额外检查 source 为 note 的数据
+                        const noteCount = papersData.filter(p => p.source === 'note').length;
+                        console.log('其中笔记条数:', noteCount);
                         $('#paper-count').text(`共 ${papersData.length} 篇论文`);
                         
                         // 构建列配置
@@ -1275,10 +1400,10 @@
                         $table.show();
                         $('#error').hide();
                         
-                        // 检查数据是否为空
-                        if (!tableData || tableData.length === 0) {
-                            console.warn('表格数据为空');
-                            $('#error').text('没有数据可显示').show();
+                        // 即使数据为空，也让 DataTables 处理，它会显示“暂无数据”
+                        if (!tableData) {
+                            console.error('表格数据构建失败');
+                            $('#error').text('数据处理错误').show();
                             $table.hide();
                             return;
                         }
@@ -1500,6 +1625,7 @@
                 })
                 .catch(error => {
                     $('#loading').hide();
+                    $('#btn-refresh').html('🔄 刷新').prop('disabled', false);
                     $('#error').text('获取论文列表出错: ' + error.message).show();
                     $('#papers-table').hide();
                     console.error('获取论文列表出错:', error);
@@ -1525,16 +1651,78 @@
                         orderable: false,
                         width: getColumnWidth(colKey),  // 使用统一的列宽函数
                         render: function(data, type, row) {
-                            // paper_id在最后一列（只读模式）
+                            if (type === 'display') {
+                                // paper_id在最后一列（只读模式）
+                                const paperIdIndex = row.length - 1;
+                                const paperId = row[paperIdIndex];
+                                const paper = papersData.find(p => p.paper_id === paperId);
+                                const filePath = paper?.attachment_path || paper?.metadata?.attachment_path || '';
+                                
+                                if (filePath) {
+                                    return `<div class="abstract-cell has-content" style="border-color: #ffd700;" ondblclick="openFileLocation('${filePath.replace(/\\/g, '\\\\')}')" title="双击打开文件所在位置">
+                                        <span class="check-icon" style="color: #ffd700;">✓</span>
+                                    </div>`;
+                                }
+                            }
+                            return `<span style="color: rgba(255, 255, 255, 0.4);">-</span>`;
+                        }
+                    });
+                } else if (colKey === 'think_points') {
+                    columns.push({
+                        title: colName || 'think_points',
+                        orderable: false,
+                        width: getColumnWidth(colKey),
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                const paperIdIndex = row.length - 1;
+                                const paperId = row[paperIdIndex];
+                                const hasData = data && data !== '-' && 
+                                               (Array.isArray(data) ? data.length > 0 : (data !== '[]' && data !== 'null' && data.trim() !== ''));
+                                if (hasData) {
+                                    return `<div class="abstract-cell has-content" style="border-color: var(--neon-orange);" onclick="openAbstractModal('${paperId}', 'think')" title="双击查看大脑思考点">
+                                        <span class="status-icon">💡</span>
+                                    </div>`;
+                                }
+                            }
+                            return '<span style="color: rgba(255,255,255,0.2);">-</span>';
+                        }
+                    });
+                } else if (colKey === 'contextual_summary') {
+                    columns.push({
+                        title: colName || 'contextual_summary',
+                        orderable: false,
+                        width: getColumnWidth(colKey),
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                const paperIdIndex = row.length - 1;
+                                const paperId = row[paperIdIndex];
+                                const hasData = data && data !== '-' && data.trim() !== '' && data !== 'null';
+                                if (hasData) {
+                                    return `<div class="abstract-cell has-content" style="border-color: var(--neon-purple);" onclick="openAbstractModal('${paperId}', 'summary')" title="双击查看关联背景总结">
+                                        <span class="status-icon">🧩</span>
+                                    </div>`;
+                                }
+                            }
+                            return '<span style="color: rgba(255,255,255,0.2);">-</span>';
+                        }
+                    });
+                } else if (colKey === 'title') {
+                    // 标题列：如果有URL，显示为可点击链接
+                    const width = getColumnWidth(colKey);
+                    columns.push({
+                        title: colName || 'title',
+                        orderable: true,
+                        width: width || '250px',
+                        render: function(data, type, row) {
                             const paperIdIndex = row.length - 1;
                             const paperId = row[paperIdIndex];
                             const paper = papersData.find(p => p.paper_id === paperId);
-                            const pdfPath = paper?.attachment_path || '';
-                            if (pdfPath) {
-                                return `<span style="color: var(--neon-green);">✓ 有PDF</span>`;
-                            } else {
-                                return `<span style="color: rgba(255, 255, 255, 0.4);">-</span>`;
+                            const url = paper?.url || '';
+                            
+                            if (url && type === 'display') {
+                                return `<a href="${url}" target="_blank" class="title-link" title="点击打开原文">${data}</a>`;
                             }
+                            return data || '-';
                         }
                     });
                 } else if (colKey === 'abstract') {
@@ -1549,19 +1737,50 @@
                                 // paper_id在最后一列
                                 const paperIdIndex = row.length - 1;
                                 const paperId = row[paperIdIndex];
-                                const hasContent = data && data !== '-' && data.trim() !== '';
-                                // 只读模式：双击查看摘要
-                                if (hasContent) {
+                                const hasAbstract = data && data !== '-' && data.trim() !== '';
+                                
+                                if (hasAbstract) {
                                     return `<div class="abstract-cell has-content" data-paper-id="${paperId}" ondblclick="openAbstractModal('${paperId}')" title="双击查看摘要">
                                         <span class="check-icon">✓</span>
                                     </div>`;
-                                } else {
-                                    return `<div class="abstract-cell" style="opacity: 0.5;" title="无摘要">
-                                        <span class="add-icon" style="opacity: 0.3;">-</span>
+                                }
+                            }
+                            return '<span style="color: rgba(255,255,255,0.2);">-</span>';
+                        }
+                    });
+                } else if (colKey === 'content') {
+                    // 内容列：通常用于笔记，只显示图标和字数
+                    columns.push({
+                        title: colName || 'content',
+                        orderable: false,
+                        width: '100px',
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                const paperIdIndex = row.length - 1;
+                                const paperId = row[paperIdIndex];
+                                const hasContent = data && data !== '-' && data.trim() !== '';
+                                if (hasContent) {
+                                    const length = data.length;
+                                    return `<div class="abstract-cell has-content" style="border-color: var(--neon-cyan); width: auto; padding: 0 10px;" onclick="openAbstractModal('${paperId}', true)" title="查看完整内容">
+                                        <span class="check-icon" style="color: var(--neon-cyan); margin-right: 5px;">📄</span>
+                                        <span style="font-size: 10px; color: var(--neon-cyan); opacity: 0.8;">${length}字</span>
                                     </div>`;
                                 }
                             }
-                            return data || '-';
+                            return '<span style="color: rgba(255,255,255,0.2);">-</span>';
+                        }
+                    });
+                } else if (colKey === 'source') {
+                    columns.push({
+                        title: colName || 'source',
+                        orderable: true,
+                        width: '100px',
+                        render: function(data, type, row) {
+                            let color = 'rgba(255,255,255,0.6)';
+                            if (data === 'note') color = 'var(--neon-green)';
+                            if (data === 'email') color = 'var(--neon-cyan)';
+                            if (data === 'pdf') color = 'var(--neon-purple)';
+                            return `<span style="color: ${color}; font-weight: 600; text-transform: uppercase; font-size: 11px;">${data || 'unknown'}</span>`;
                         }
                     });
                 } else {
@@ -1669,6 +1888,7 @@
                 '标签': 'tag',
                 '作者': 'authors',
                 '摘要': 'abstract',
+                '内容': 'content',
                 '关键词': 'keywords'
             };
             return fieldMap[colKey] || colKey.toLowerCase();
@@ -1679,13 +1899,14 @@
             const widthMap = {
                 'title': '200px',           // 标题列
                 'tag': '120px',            // 标签列
-                'keywords': '180px',        // 关键词列
-                'authors': '180px',         // 作者列
-                'abstract': '100px',        // 摘要列显示图标，较窄
-                'attachment_path': '100px', // PDF标识列，较窄
-                '操作': '80px'              // 操作列，只显示删除按钮
+                'think_points': '80px',     // Think点列
+                'contextual_summary': '80px', // 总结列
+                'abstract': '70px',        // 摘要列显示图标
+                'content': '70px',         // 内容列显示图标
+                'attachment_path': '100px', // PDF标识列
+                '操作': '80px'              // 操作列
             };
-            return widthMap[colKey] || '150px'; // 自定义列默认150px
+            return widthMap[colKey] || '150px'; 
         }
 
         // 编辑功能已移除，以下函数保留但不再使用
@@ -1772,19 +1993,70 @@
             });
         }
 
+        // 在文件管理器中打开文件位置
+        function openFileLocation(path) {
+            if (!path) return;
+            
+            fetch('/api/system/open_folder', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ path: path })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 提示用户已在后台打开
+                    alert('文件夹已在后台打开并定位文件');
+                } else {
+                    alert('打开文件夹失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('打开文件夹出错:', error);
+                alert('系统错误: ' + error.message);
+            });
+        }
+
         // 打开摘要查看模态框（只读）
-        function openAbstractModal(paperId) {
+        function openAbstractModal(paperId, type = 'abstract') {
             const paper = papersData.find(p => p.paper_id === paperId);
             if (!paper) {
                 alert('未找到该论文');
                 return;
             }
             
-            const currentAbstract = paper.abstract || '暂无摘要';
+            let title = '摘要查看';
+            let text = paper.abstract || '暂无摘要';
+            
+            if (type === 'content') {
+                title = '内容查看';
+                text = paper.content || '暂无内容';
+            } else if (type === 'think') {
+                title = '💡 大脑思考点 (Think Points)';
+                const points = paper.think_points;
+                if (Array.isArray(points)) {
+                    text = points.map((p, i) => `${i+1}. ${p}`).join('\n\n');
+                } else if (typeof points === 'string') {
+                    try {
+                        const parsed = JSON.parse(points);
+                        text = Array.isArray(parsed) ? parsed.map((p, i) => `${i+1}. ${p}`).join('\n\n') : points;
+                    } catch(e) { text = points; }
+                } else {
+                    text = '尚未生成思考点。';
+                }
+            } else if (type === 'summary') {
+                title = '🧩 关联背景总结';
+                text = paper.contextual_summary || '尚未生成关联总结。';
+            }
+            
             const $modal = $('#abstract-modal');
             const $abstractDiv = $('#abstract-textarea');
+            const $modalTitle = $modal.find('h3');
             
-            $abstractDiv.text(currentAbstract);
+            if ($modalTitle.length) $modalTitle.text(title);
+            $abstractDiv.text(text);
             $modal.data('paper-id', paperId);
             $modal.addClass('active');
         }

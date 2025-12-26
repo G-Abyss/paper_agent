@@ -14,6 +14,23 @@ import os
 import logging
 from datetime import datetime
 
+def get_llm():
+    """获取当前激活的 LLM 实例"""
+    try:
+        from utils.model_config import get_active_model
+        from utils.llm_utils import create_llm_from_model_config
+        
+        active_model = get_active_model()
+        if active_model:
+            llm_instance = create_llm_from_model_config(active_model)
+            if llm_instance:
+                return llm_instance
+    except Exception as e:
+        logging.error(f"动态获取 LLM 失败: {e}")
+    
+    # 备选方案：返回 config.py 中的默认 llm
+    return llm
+
 
 @tool("网页内容获取工具")
 def fetch_webpage_content(url: str) -> str:
@@ -29,17 +46,20 @@ def fetch_webpage_content(url: str) -> str:
         
         # 使用requests获取网页内容
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
         }
         try:
-            response = requests.get(url, headers=headers, timeout=180, allow_redirects=True)
+            # 缩短超时时间到 15 秒，避免长时间阻塞
+            response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
             response.raise_for_status()
         except requests.exceptions.Timeout:
-            logging.warning(f"获取网页内容超时（超过180秒）: {url}")
-            return f"获取网页内容失败: 下载超时（超过180秒），已跳过"
+            logging.warning(f"获取网页内容超时（15秒）: {url}")
+            return f"获取失败：连接超时（15秒）。可能是由于网络限制或目标网站无法访问。"
         except requests.exceptions.RequestException as e:
             logging.warning(f"获取网页内容失败: {url}, 错误: {str(e)}")
-            return f"获取网页内容失败: {str(e)}"
+            return f"获取失败：网络错误 {str(e)}"
         
         # 使用BeautifulSoup提取文本
         from bs4 import BeautifulSoup
@@ -135,12 +155,13 @@ def arxiv_download_tool(paper_url: str, paper_title: str = "") -> str:
         except Exception as e:
             logging.debug(f"获取arXiv元数据失败: {str(e)}")
         
-        # 直接使用requests下载PDF（更可靠，支持超时）
+        # 直接使用requests下载PDF（更可靠，支持超时设置）
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
-            response = requests.get(arxiv_pdf_url, headers=headers, timeout=180, allow_redirects=True)
+            # 缩短PDF下载超时到 30 秒
+            response = requests.get(arxiv_pdf_url, headers=headers, timeout=30, allow_redirects=True)
             response.raise_for_status()
             
             if response.content[:4] == b'%PDF':
@@ -230,17 +251,21 @@ fetch_webpage_tool = fetch_webpage_content
 
 
 @tool("RAG论文查询工具")
-def rag_paper_query_tool(query: str, n_results: int = 5, paper_id: str = "") -> str:
+def rag_paper_query_tool(query: str, n_results: Optional[int] = None, paper_id: str = "") -> str:
     """
     使用RAG（检索增强生成）在已存储的论文中查询相关信息。
     
     输入参数：
     - query (字符串，必需): 用户的问题或查询内容
-    - n_results (整数，可选): 返回结果数量，默认5
+    - n_results (整数，可选): 返回结果数量，默认5。如果不提供，将使用默认值5。
     - paper_id (字符串，可选): 指定论文ID，如果为空字符串则搜索所有论文
     """
     try:
         from utils.vector_db import search_similar_chunks
+        
+        # 如果未提供n_results，使用默认值5
+        if n_results is None:
+            n_results = 5
         
         # 搜索相似文本块（如果paper_id为空字符串，则搜索所有论文）
         results = search_similar_chunks(query, n_results=n_results, paper_id=paper_id if paper_id else None)
@@ -275,6 +300,167 @@ def rag_paper_query_tool(query: str, n_results: int = 5, paper_id: str = "") -> 
         logging.error(f"RAG查询失败: {str(e)}")
         return f"RAG查询出错: {str(e)}"
 
+
+@tool("查询已知知识工具")
+def query_known_knowledge_tool(query: str, n_results: Optional[int] = None) -> str:
+    """
+    在"已知知识"（标签为note的笔记）中查询相关信息。
+    这是用户已经掌握的知识，应该优先使用。
+    
+    输入参数：
+    - query (字符串，必需): 用户的问题或查询内容
+    - n_results (整数，可选): 返回结果数量，默认5。如果不提供，将使用默认值5。
+    """
+    try:
+        from utils.vector_db import search_similar_chunks
+        
+        # 如果未提供n_results，使用默认值5
+        if n_results is None:
+            n_results = 5
+        
+        # 只在source='note'的笔记中搜索
+        results = search_similar_chunks(query, n_results=n_results, source='note')
+        
+        if not results:
+            return f"在已知知识（笔记）中未找到与查询 '{query}' 相关的内容。"
+        
+        # 格式化结果
+        response_parts = [f"在已知知识中找到 {len(results)} 个相关片段：\n"]
+        for i, result in enumerate(results, 1):
+            metadata = result.get('metadata', {})
+            paper_title = metadata.get('paper_title', '未知标题')
+            chunk_index = metadata.get('chunk_index', 0)
+            distance = result.get('distance', 0)
+            
+            response_parts.append(f"\n[片段 {i}] (相关性: {1-distance:.3f})")
+            response_parts.append(f"笔记: {paper_title}")
+            response_parts.append(f"内容: {result['content'][:500]}...")
+            if i < len(results):
+                response_parts.append("---")
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        logging.error(f"查询已知知识失败: {str(e)}")
+        return f"查询已知知识出错: {str(e)}"
+
+
+@tool("查询未知知识工具")
+def query_unknown_knowledge_tool(query: str, n_results: Optional[int] = None) -> str:
+    """
+    在"未知知识"（非note标签的论文）中查询相关信息。
+    这是用户尚未掌握的知识，用于补充和扩展理解。
+    
+    输入参数：
+    - query (字符串，必需): 用户的问题或查询内容
+    - n_results (整数，可选): 返回结果数量，默认5。如果不提供，将使用默认值5。
+    """
+    try:
+        from utils.vector_db import search_similar_chunks
+        
+        # 如果未提供n_results，使用默认值5
+        if n_results is None:
+            n_results = 5
+        
+        # 只在source!='note'的论文中搜索
+        results = search_similar_chunks(query, n_results=n_results, source='!note')
+        
+        if not results:
+            return f"在未知知识（论文库）中未找到与查询 '{query}' 相关的内容。"
+        
+        # 格式化结果
+        response_parts = [f"在未知知识中找到 {len(results)} 个相关片段：\n"]
+        for i, result in enumerate(results, 1):
+            metadata = result.get('metadata', {})
+            paper_title = metadata.get('paper_title', '未知标题')
+            paper_path = metadata.get('paper_path', '')
+            chunk_index = metadata.get('chunk_index', 0)
+            distance = result.get('distance', 0)
+            
+            response_parts.append(f"\n[片段 {i}] (相关性: {1-distance:.3f})")
+            response_parts.append(f"论文: {paper_title}")
+            if paper_path:
+                response_parts.append(f"路径: {paper_path}")
+            response_parts.append(f"内容: {result['content'][:500]}...")
+            if i < len(results):
+                response_parts.append("---")
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        logging.error(f"查询未知知识失败: {str(e)}")
+        return f"查询未知知识出错: {str(e)}"
+
+
+@tool("获取论文Think点工具")
+def get_papers_think_points_tool(max_results: Optional[int] = None) -> str:
+    """
+    获取数据库中所有笔记（已知知识）的think点（思考点）。
+    这些think点反映了用户已知知识中可能感兴趣的研究方向。
+    
+    输入参数：
+    - max_results (整数，可选): 返回结果数量，默认返回所有。如果不提供，将返回所有笔记的think点。
+    
+    返回：
+    - 包含笔记标题和think点的格式化字符串
+    """
+    try:
+        from utils.vector_db import get_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查询所有note来源的笔记，且think_points不为空的记录
+            sql = """
+                SELECT paper_id, title, think_points 
+                FROM papers 
+                WHERE source = 'note' 
+                  AND think_points IS NOT NULL 
+                  AND think_points != '[]'::jsonb
+                  AND jsonb_array_length(think_points) > 0
+                ORDER BY updated_at DESC
+            """
+            
+            if max_results:
+                sql += f" LIMIT {max_results}"
+            
+            cur.execute(sql)
+            papers = cur.fetchall()
+            
+            if not papers:
+                return "数据库中暂无包含think点的笔记（已知知识）。"
+            
+            # 格式化结果
+            response_parts = [f"找到 {len(papers)} 条包含think点的笔记（已知知识）：\n"]
+            for i, paper in enumerate(papers, 1):
+                title = paper.get('title', '未知标题')
+                think_points = paper.get('think_points', [])
+                
+                if isinstance(think_points, str):
+                    import json
+                    try:
+                        think_points = json.loads(think_points)
+                    except:
+                        think_points = []
+                
+                response_parts.append(f"\n[{i}] {title}")
+                if think_points and isinstance(think_points, list):
+                    for j, point in enumerate(think_points, 1):
+                        if isinstance(point, str):
+                            response_parts.append(f"   Think点 {j}: {point[:200]}...")
+                response_parts.append("---")
+            
+            return "\n".join(response_parts)
+            
+        finally:
+            from utils.vector_db import return_db_connection
+            return_db_connection(conn)
+            
+    except Exception as e:
+        logging.error(f"获取think点失败: {str(e)}")
+        return f"获取think点出错: {str(e)}"
 
 @tool("获取论文列表工具")
 def get_paper_list_tool() -> str:
